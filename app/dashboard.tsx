@@ -370,6 +370,7 @@ export default function Dashboard() {
 
     const rideId = activeRideId;
     const clientId = chatRideInfo?.clientId || '';
+    let subscriptionActive = true;
 
     console.log('[chat] subscribing to active ride', { rideId, driverId: uid });
     const unsubscribeUnread = getUnreadCount(database, rideId, uid, (count) => {
@@ -383,12 +384,18 @@ export default function Dashboard() {
       uid,
       (message, messageId) => {
         console.log('[chat] client message received', { rideId, messageId, senderId: message.senderId });
-        if (message.senderId !== uid && !showChatPanelRef.current) {
+        if (subscriptionActive && message.senderId !== uid && !showChatPanelRef.current) {
           try {
             messagePlayer.seekTo(0);
-            messagePlayer.play();
+            Promise.resolve(messagePlayer.play()).catch((error) => {
+              if (subscriptionActive) {
+                console.log('[v0] Message alert playback failed:', error);
+              }
+            });
           } catch (error) {
-            console.log('[v0] Message alert playback failed:', error);
+            if (subscriptionActive) {
+              console.log('[v0] Message alert playback failed:', error);
+            }
           }
           const clientName = chatRideInfo?.clientName || 'Client';
           setToastData({
@@ -408,6 +415,7 @@ export default function Dashboard() {
     });
 
     return () => {
+      subscriptionActive = false;
       unsubscribeUnread();
       unsubscribeMessages();
       unsubscribeAutoDelete();
@@ -585,7 +593,7 @@ export default function Dashboard() {
     const carModelName = driverData.vehicle?.model || '';
     const carColor = driverData.vehicle?.color || '';
     const carModel = carColor && carBrand
-      ? `${carColor} • ${carBrand} ${carModelName}`.trim()
+      ? `${carColor} �� ${carBrand} ${carModelName}`.trim()
       : `${carBrand} ${carModelName}`.trim();
 
     const plateNumber = driverData.vehicle?.plateNumber || '';
@@ -997,18 +1005,18 @@ if (activeTab === 'settings') {
             ]}
             pointerEvents={(userStatus === 'approved' && registrationCompleted) ? 'auto' : 'none'}
           >
-  <View
-  onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
-  style={[styles.slideTrack, isOnline && styles.slideTrackOnline]}
-  >
-  <Text style={[styles.slideInstructionText, isOnline && styles.slideInstructionTextOnline]}>
+            <View
+              onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
+              style={[styles.slideTrack, isOnline && styles.slideTrackOnline]}
+            >
+              <Text style={[styles.slideInstructionText, isOnline && styles.slideInstructionTextOnline]}>
                 {isOnline ? 'Slide to go offline' : 'Slide to go online'}
               </Text>
               <GestureDetector gesture={gesture}>
-  <ReanimatedAnimated.View
-  style={[styles.slideThumb, sliderStyle]}
-  >
-                  <Text style={[styles.chevronText, isOnline && styles.chevronTextOnline]}>{isOnline ? '<<' : '>>'}</Text>
+                <ReanimatedAnimated.View style={[styles.slideThumb, sliderStyle]}>
+                  <Text style={[styles.chevronText, isOnline && styles.chevronTextOnline]}>
+                    {isOnline ? '<<' : '>>'}
+                  </Text>
                 </ReanimatedAnimated.View>
               </GestureDetector>
             </View>
