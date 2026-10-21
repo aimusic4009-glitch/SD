@@ -595,7 +595,7 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
     const carModelName = driverData.vehicle?.model || '';
     const carColor = driverData.vehicle?.color || '';
     const carModel = carColor && carBrand
-      ? `${carColor} �� ${carBrand} ${carModelName}`.trim()
+      ? `${carColor} • ${carBrand} ${carModelName}`.trim()
       : `${carBrand} ${carModelName}`.trim();
 
     const plateNumber = driverData.vehicle?.plateNumber || '';
