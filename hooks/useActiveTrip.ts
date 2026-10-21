@@ -14,6 +14,9 @@ export type WorkflowType = 'direct_trip' | 'store_delivery';
 
 interface UseActiveTripResult {
   activeTrip: any | null;
+  liveOrder: any | null;
+  driverStatus: string | null;
+  storeCallable: boolean | null;
   tripStatus: string | null;
   workflowType: WorkflowType | null;
   polylineToPickup: string | null;
@@ -225,6 +228,9 @@ export function useActiveTrip(driverId: string | null): UseActiveTripResult {
 
   return {
     activeTrip,
+    liveOrder,
+    driverStatus: liveOrder?.driverStatus ?? null,
+    storeCallable: activeTrip?.storeCallable ?? liveOrder?.storeCallable ?? null,
     tripStatus,
     workflowType,
     polylineToPickup,

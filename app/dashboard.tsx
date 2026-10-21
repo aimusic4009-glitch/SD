@@ -142,8 +142,8 @@ export default function Dashboard() {
   }, [router]);
 
   // Active trip from Firestore orders (drives the live map polylines + markers)
-  const { activeTrip, tripStatus, workflowType, markers, activePolyline, showPolyline, arrivalTime } =
-    useActiveTrip(driverId);
+const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflowType, markers, activePolyline, showPolyline, arrivalTime } =
+  useActiveTrip(driverId);
   const { callState, formattedTime, startCall } = useCall();
   const { totalEarnings, loading: tripHistoryLoading } = useDriverTripHistory(driverId, 'today');
   const callPulse = useRef(new Animated.Value(1)).current;
@@ -891,23 +891,21 @@ if (activeTab === 'settings') {
       </View>
 
       {(() => {
-        const liveDriverStatus = String(activeTrip?.driverStatus || '').toLowerCase();
-        const isStoreAssigned = workflowType === 'store_delivery' && (
-          (tripStatus === 'accepted' && ['assigned', 'driver_assigned'].includes(liveDriverStatus)) ||
+        const liveDriverStatus = String(driverStatus || '').toLowerCase();
+        const canCallStore = workflowType === 'store_delivery' && storeCallable !== false && (
+          (tripStatus === 'accepted' && liveDriverStatus === 'assigned') ||
           (tripStatus === 'at_store' && liveDriverStatus === 'at_store')
         );
-        const storeCallable = activeTrip?.storeCallable !== false;
-        const callTarget = workflowType === 'store_delivery' && isStoreAssigned && storeCallable ? 'store' as const : undefined;
-        const callLabel = workflowType === 'direct_trip' ? 'Call rider' : callTarget ? 'Call store' : 'Call customer';
-        const canCall = !!activeTrip && (
-          workflowType === 'direct_trip' && ['accepted', 'arrived', 'started'].includes(tripStatus || '') ||
-          workflowType === 'store_delivery' && ((isStoreAssigned && storeCallable) || ['picked_up', 'delivered'].includes(tripStatus || ''))
-        );
+        const canCallCustomer = workflowType === 'store_delivery' && ['picked_up', 'delivered'].includes(tripStatus || '');
+        const canCallRider = workflowType === 'direct_trip' && ['accepted', 'arrived', 'started'].includes(tripStatus || '');
+        const callTarget = canCallStore ? 'store' as const : undefined;
+        const callLabel = canCallRider ? 'Call rider' : canCallStore ? 'Call store' : 'Call customer';
+        const canCall = !!activeTrip && (canCallRider || canCallStore || canCallCustomer);
         if (!canCall) return null;
         const handleCall = async () => {
           if (callState !== 'idle' || !activeTrip) return;
           try {
-            await startCall(activeTrip.orderId, callTarget);
+            await startCall(activeTrip.orderId, callTarget, canCallCustomer ? 'Customer' : undefined);
           } catch (error: any) {
             if (error?.status === 409 || error?.status === 403) {
               setToastData({ clientName: '', message: error.message || 'Call is not available.' });
