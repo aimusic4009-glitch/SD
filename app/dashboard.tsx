@@ -112,6 +112,7 @@ const { width, height } = Dimensions.get('window');
 export default function Dashboard() {
   const router = useRouter();
   const [isOnline, setIsOnline] = useState(false);
+  const [isPresenceLoaded, setIsPresenceLoaded] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [userStatus, setUserStatus] = useState<'pending' | 'approved' | 'accepted' | 'rejected'>('pending');
   const [registrationCompleted, setRegistrationCompleted] = useState(false);
@@ -308,6 +309,7 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
       setIsOnline(nextOnline);
       setIsBusy(data?.isBusy === true);
       onlineRef.current = nextOnline;
+      setIsPresenceLoaded(true);
     });
 
     // Listen for active trip status changes (for location updates and chat)
@@ -537,7 +539,7 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
 
   useEffect(() => {
     if (!auth.currentUser?.uid || userStatus !== 'approved' || !isOnline) {
-      if (!isOnline) void stopTracking();
+      if (!isOnline && isPresenceLoaded) void stopTracking();
       return;
     }
 
@@ -575,7 +577,7 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
       cancelled = true;
       appStateSubscription.remove();
     };
-  }, [isOnline, userStatus, activeRideId, activeRideStatus]);
+  }, [isOnline, isPresenceLoaded, userStatus, activeRideId, activeRideStatus]);
 
   useEffect(() => () => {
     void stopTracking();

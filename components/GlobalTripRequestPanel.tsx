@@ -132,7 +132,7 @@ function FareSummaryPanel({
               )}
               {typeof fee === 'number' && (
                 <View style={fareStyles.breakdownRow}>
-                  <Text style={fareStyles.breakdownLabel}>'Service fee'</Text>
+                  <Text style={fareStyles.breakdownLabel}>{isStoreDelivery ? 'Delivery fee' : 'Service fee'}</Text>
                   <Text style={fareStyles.breakdownValue}>{formatMoney(fee, currency)}</Text>
                 </View>
               )}

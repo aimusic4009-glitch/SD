@@ -189,14 +189,16 @@ export function getMapHtml(initialLat: number, initialLng: number): string {
       if (!vehicleImg || typeof heading !== 'number' || !isFinite(heading)) return;
       var offset = (vehicleType && typeof VEHICLE_ROTATION_OFFSET[vehicleType] === 'number')
         ? VEHICLE_ROTATION_OFFSET[vehicleType] : 0;
-      var target = ((heading + offset) % 360 + 360) % 360;
+      function norm(a) { return ((a % 360) + 360) % 360; }
+      var target = norm(heading + offset);
       if (smoothedHeading === null) smoothedHeading = target;
-      var filterDelta = ((target - smoothedHeading + 540) % 360) - 180;
+      var filterDelta = ((target - norm(smoothedHeading) + 540) % 360) - 180;
       smoothedHeading += 0.35 * filterDelta;
+      smoothedHeading = ((smoothedHeading % 360) + 360) % 360;
       if (currentRotation === null) {
         currentRotation = smoothedHeading;
       } else {
-        var delta = ((smoothedHeading - (currentRotation % 360) + 540) % 360) - 180;
+        var delta = ((norm(smoothedHeading) - norm(currentRotation) + 540) % 360) - 180;
         currentRotation += delta;
       }
       vehicleImg.style.transform = 'rotate(' + currentRotation + 'deg)';
