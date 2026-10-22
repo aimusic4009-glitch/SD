@@ -133,7 +133,7 @@ export default function RootLayout() {
             <Stack.Screen name="chooseLocation" />
             <Stack.Screen name="application-submitted" />
             <Stack.Screen name="forgot-password" />
-            <Stack.Screen name="dashboard" />
+            <Stack.Screen name="dashboard" options={{ gestureEnabled: false }} />
             <Stack.Screen name="+not-found" />
           </Stack>
           <StatusBar style="light" />
@@ -152,7 +152,7 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="registration-terms" />
-            <Stack.Screen name="dashboard" />
+            <Stack.Screen name="dashboard" options={{ gestureEnabled: false }} />
             <Stack.Screen name="personal-info" />
             <Stack.Screen name="personal-picture" />
             <Stack.Screen name="step2" />

@@ -5,6 +5,7 @@ import {
   Text,
   Alert,
   AppState,
+  BackHandler,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
@@ -227,6 +228,8 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
   // auto-recenter; when inactive the map centers on the vehicle on load and
   // auto-recenters after 20s of no interaction. The user can always zoom freely.
   const hasActiveTrip = !!tripStatus;
+  const backPressRef = useRef(0);
+  const dashboardStateRef = useRef({ activeTab, showChatPanel, showInboxPanel, hasActiveTrip, isOnline });
   const [unreadCount, setUnreadCount] = useState(0);
   const [showToast, setShowToast] = useState(false);
   const [toastData, setToastData] = useState({ clientName: '', message: '' });
@@ -236,6 +239,54 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
   useEffect(() => {
     showChatPanelRef.current = showChatPanel;
   }, [showChatPanel]);
+
+  useEffect(() => {
+    dashboardStateRef.current = { activeTab, showChatPanel, showInboxPanel, hasActiveTrip, isOnline };
+  }, [activeTab, showChatPanel, showInboxPanel, hasActiveTrip, isOnline]);
+
+  useEffect(() => {
+    const handleBack = () => {
+      const state = dashboardStateRef.current;
+      if (state.showChatPanel || state.showInboxPanel) {
+        setShowChatPanel(false);
+        setShowInboxPanel(false);
+        return true;
+      }
+      if (state.activeTab !== 'home') {
+        setActiveTab('home');
+        return true;
+      }
+      if (state.hasActiveTrip) {
+        setToastData({ clientName: 'Notice', message: "Finish your trip first. You can't leave while a trip is active." });
+        setShowToast(true);
+        return true;
+      }
+      if (state.isOnline) {
+        const now = Date.now();
+        if (now - backPressRef.current < 2000) {
+          if (Platform.OS !== 'web') BackHandler.exitApp();
+        } else {
+          backPressRef.current = now;
+          setToastData({ clientName: 'Notice', message: 'Press back again to exit' });
+          setShowToast(true);
+        }
+        return true;
+      }
+      return false;
+    };
+
+    if (Platform.OS === 'web') {
+      window.history.pushState({ dashboardGuard: true }, '', window.location.href);
+      const onPopState = () => {
+        if (handleBack()) window.history.pushState({ dashboardGuard: true }, '', window.location.href);
+      };
+      window.addEventListener('popstate', onPopState);
+      return () => window.removeEventListener('popstate', onPopState);
+    }
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', handleBack);
+    return () => subscription.remove();
+  }, []);
 
   const sliderX = useSharedValue(0);
   const [trackWidth, setTrackWidth] = useState(0);
