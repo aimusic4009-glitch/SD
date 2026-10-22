@@ -93,6 +93,7 @@ const watchLocation = async (callback: (coords: { latitude: number; longitude: n
 };
 import { ref, update, onValue, off, remove, set } from 'firebase/database';
 import { clearDriverPresence } from '@/utils/driverPresence';
+import { restoreActiveTrip } from '@/services/tripRestore';
 import { Home, Mail, Clock, Settings, Phone } from 'lucide-react-native';
 import { useCall } from '@/context/CallContext';
 import ChatPanel from '@/components/ChatPanel';
@@ -151,6 +152,29 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
   useActiveTrip(driverId);
   const { callState, formattedTime, startCall } = useCall();
   const { totalEarnings, loading: tripHistoryLoading } = useDriverTripHistory(driverId, 'today');
+
+  useEffect(() => {
+    if (userStatus !== 'approved' || !driverId) return;
+    let cancelled = false;
+    const restore = async () => {
+      const result = await restoreActiveTrip();
+      if (cancelled) return;
+      if (result.endedTrip) {
+        setActiveRideId(null);
+        setActiveRideStatus(null);
+        setToastData({ clientName: 'Notice', message: result.endedTrip === 'cancelled' ? 'Your last trip was cancelled' : 'Your last trip was completed' });
+        setShowToast(true);
+      }
+    };
+    void restore();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void restore();
+    });
+    return () => {
+      cancelled = true;
+      subscription.remove();
+    };
+  }, [driverId, userStatus]);
   const callPulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -846,7 +870,7 @@ if (activeTab === 'trips') {
   }
   
 if (activeTab === 'settings') {
-  return <View style={styles.container}><DriverSettings driverData={driverData} beforeLogout={async () => { await stopTracking(); if (driverId) await clearDriverPresence(driverId); }} onNavigate={(route) => {
+  return <View style={styles.container}><DriverSettings driverData={driverData} hasActiveTrip={hasActiveTrip} beforeLogout={async () => { await stopTracking(); if (driverId) await clearDriverPresence(driverId); }} onNavigate={(route) => {
   if (route === 'Vehicle and Documents') router.push('/vehicle-information');
   else if (route.toLowerCase() === 'security') router.push('/forgot-password');
   else Alert.alert(route, 'This section is coming soon.');

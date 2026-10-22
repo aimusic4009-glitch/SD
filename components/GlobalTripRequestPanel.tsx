@@ -14,6 +14,7 @@ import {
 import { User, MapPin, Navigation, Hash, Phone, Package, Car, Truck, CheckCircle2 } from 'lucide-react-native';
 import { ref, onValue, off } from 'firebase/database';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 import { database, auth, firestore } from '@/config/firebase';
 
 const { width, height } = Dimensions.get('window');
@@ -154,9 +155,8 @@ function FareSummaryPanel({
 }
 
 export default function GlobalTripRequestPanel() {
-  // CRITICAL: Get driver UID immediately - if no UID, don't render anything
-  const driverUid = auth.currentUser?.uid;
-  
+  const [driverUid, setDriverUid] = useState<string | null>(null);
+  const [serverTimeOffset, setServerTimeOffset] = useState(0);
   const [currentRequest, setCurrentRequest] = useState<TripRequest | null>(null);
   const [liveOrder, setLiveOrder] = useState<Record<string, any> | null>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -284,7 +284,7 @@ export default function GlobalTripRequestPanel() {
     if (!expiresAt) return;
 
     const updateCountdown = () => {
-      const remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+      const remaining = Math.max(0, Math.floor((expiresAt - (Date.now() + serverTimeOffset)) / 1000));
       setCountdown(remaining);
     };
 
@@ -292,10 +292,16 @@ export default function GlobalTripRequestPanel() {
     const interval = setInterval(updateCountdown, 1000);
 
     return () => clearInterval(interval);
-  }, [currentRequest?.orderId, currentRequest?.status, currentRequest?.expiresAt]);
+  }, [currentRequest?.orderId, currentRequest?.status, currentRequest?.expiresAt, serverTimeOffset]);
+
+  useEffect(() => onAuthStateChanged(auth, (user) => setDriverUid(user?.uid ?? null)), []);
+
+  useEffect(() => {
+    const offsetRef = ref(database, '.info/serverTimeOffset');
+    return onValue(offsetRef, (snapshot) => setServerTimeOffset(Number(snapshot.val()) || 0));
+  }, []);
 
   // Listen to driver_trip_requests/{driverUid} - PERMANENT GLOBAL LISTENER
-  // CRITICAL: Only start listener if driverUid exists
   useEffect(() => {
     if (!driverUid) {
       // No authenticated driver - clear all state and don't start listener
@@ -334,20 +340,25 @@ export default function GlobalTripRequestPanel() {
         return;
       }
 
-      // Get the active request (not in terminal state)
-      const activeRequest = requests.find(r => 
-        !['completed', 'rejected', 'expired', 'cancelled'].includes(r.status)
+      const now = Date.now() + serverTimeOffset;
+      const activeRequest = requests.find(r =>
+        !['completed', 'rejected', 'expired', 'cancelled'].includes(r.status) &&
+        !(r.status === 'incoming_request' && r.expiresAt <= now)
       );
 
       if (activeRequest) {
         const prevStatus = currentRequest?.status;
         setCurrentRequest(activeRequest);
 
-        // Show panel on new incoming request
-        if (activeRequest.status === 'incoming_request' && (!isVisible || prevStatus !== 'incoming_request')) {
+        const isIncoming = activeRequest.status === 'incoming_request';
+        if (!isVisible || prevStatus !== activeRequest.status) {
           setIsVisible(true);
-          setIsMinimized(false);
-          animateToPosition(PANEL_EXPANDED_Y, true);
+          if (isIncoming) {
+            setIsMinimized(false);
+            animateToPosition(PANEL_EXPANDED_Y, true);
+          } else {
+            animateToPosition(isMinimized ? PANEL_MINIMIZED_Y : PANEL_EXPANDED_Y, false);
+          }
         }
 
         // Status changes that should hide panel
@@ -367,7 +378,7 @@ export default function GlobalTripRequestPanel() {
     });
 
     return () => off(tripRequestsRef, 'value', listener);
-  }, [driverUid, currentRequest?.status, isVisible, animateToPosition]);
+  }, [driverUid, currentRequest?.status, isVisible, isMinimized, serverTimeOffset, animateToPosition]);
 
   // CENTRALIZED status update handler - ALL buttons use this same pattern
   // Matches the ACCEPT button behavior which is already working correctly
@@ -732,7 +743,7 @@ export default function GlobalTripRequestPanel() {
           styles.overlay,
           { opacity: overlayOpacity }
         ]}
-        pointerEvents={isMinimized ? 'none' : 'auto'}
+        pointerEvents={isMinimized || currentRequest.status !== 'incoming_request' ? 'none' : 'auto'}
       />
 
       {/* TOP-ANCHORED DRAGGABLE PANEL */}

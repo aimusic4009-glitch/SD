@@ -54,6 +54,7 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [driverUid, setDriverUid] = useState<string | null>(null);
   const [verificationStatus, setVerificationStatus] = useState<string | null>(null);
+  const [serverTimeOffset, setServerTimeOffset] = useState(0);
   const pathname = usePathname();
   const requestPlayer = useAudioPlayer(requestSound);
 
@@ -91,6 +92,11 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
 
     return () => unsubscribe();
   }, [driverUid]);
+
+  useEffect(() => {
+    const offsetRef = ref(database, '.info/serverTimeOffset');
+    return onValue(offsetRef, (snapshot) => setServerTimeOffset(Number(snapshot.val()) || 0));
+  }, []);
 
   // RTDB listener - ONLY starts when driverUid is available
   useEffect(() => {
@@ -132,9 +138,10 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Get the active request (not in terminal state)
-      const activeRequest = requests.find(r => 
-        !['completed', 'rejected', 'expired', 'cancelled'].includes(r.status)
+      const now = Date.now() + serverTimeOffset;
+      const activeRequest = requests.find(r =>
+        !['completed', 'rejected', 'expired', 'cancelled'].includes(r.status) &&
+        !(r.status === 'incoming_request' && r.expiresAt <= now)
       );
 
       if (activeRequest) {
@@ -142,7 +149,7 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
 
         // Show panel and play the alert only where the panel is rendered.
         const canExposeRequest = verificationStatus === 'approved' && pathname === '/dashboard';
-        if (activeRequest.status === 'incoming_request' && !isVisible && canExposeRequest) {
+        if (!isVisible && canExposeRequest) {
           setIsVisible(true);
           setIsMinimized(false);
             if (Platform.OS !== 'web') {
@@ -169,7 +176,7 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
     });
 
     return () => off(tripRequestsRef, 'value', listener);
-  }, [driverUid, currentRequest?.status, isVisible, verificationStatus, pathname, requestPlayer]);
+  }, [driverUid, currentRequest?.status, isVisible, verificationStatus, pathname, requestPlayer, serverTimeOffset]);
 
   const clearRequest = () => {
     setCurrentRequest(null);

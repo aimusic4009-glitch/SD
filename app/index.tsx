@@ -19,6 +19,7 @@ import { onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { ref, get } from 'firebase/database';
 import { auth, database, firestore } from '@/config/firebase';
+import { restoreActiveTrip } from '@/services/tripRestore';
 
 const { width, height } = Dimensions.get('window');
 
@@ -69,9 +70,10 @@ export default function LoginPage() {
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+    const user = userCredential.user;
+    void restoreActiveTrip();
 
-      const userRef = ref(database, `users/${user.uid}`);
+    const userRef = ref(database, `users/${user.uid}`);
       const snapshot = await get(userRef);
 
       if (snapshot.exists()) {

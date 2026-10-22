@@ -10,7 +10,7 @@ export async function joinChannel(credentials: CallCredentials, onRemoteAudio?: 
       await client.subscribe(user, mediaType);
       if (mediaType === 'audio') {
         try {
-          void user.audioTrack?.play()?.catch(() => undefined);
+          Promise.resolve(user.audioTrack?.play()).catch(() => undefined);
         } catch {
           // The remote track may be removed while a call is ending.
         }
