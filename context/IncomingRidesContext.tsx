@@ -144,7 +144,10 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
         if (activeRequest.status === 'incoming_request' && !isVisible && canExposeRequest) {
           setIsVisible(true);
           setIsMinimized(false);
-          try { requestPlayer.seekTo(0); requestPlayer.play(); } catch {}
+          try {
+            requestPlayer.seekTo(0);
+            void Promise.resolve(requestPlayer.play()).catch(() => undefined);
+          } catch {}
         }
 
         // Handle terminal statuses - hide after brief delay
