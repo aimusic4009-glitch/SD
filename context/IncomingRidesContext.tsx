@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Platform } from 'react-native';
 import { ref, onValue, off } from 'firebase/database';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -144,10 +145,12 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
         if (activeRequest.status === 'incoming_request' && !isVisible && canExposeRequest) {
           setIsVisible(true);
           setIsMinimized(false);
-          try {
-            requestPlayer.seekTo(0);
-            void Promise.resolve(requestPlayer.play()).catch(() => undefined);
-          } catch {}
+            if (Platform.OS !== 'web') {
+              try {
+                requestPlayer.seekTo(0);
+                void Promise.resolve(requestPlayer.play()).catch(() => undefined);
+              } catch {}
+            }
         }
 
         // Handle terminal statuses - hide after brief delay

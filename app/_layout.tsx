@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import flashVideo from '@/assets/videos/flash.mp4';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -19,7 +19,9 @@ function SplashScreen({ onFinish }: { onFinish: () => void }) {
   const player = useVideoPlayer(flashVideo, (videoPlayer) => {
     videoPlayer.loop = false;
     videoPlayer.muted = true;
-    void Promise.resolve(videoPlayer.play()).catch(() => undefined);
+    if (Platform.OS !== 'web') {
+      void Promise.resolve(videoPlayer.play()).catch(() => undefined);
+    }
   });
 
   const onFinishRef = useRef(onFinish);
@@ -31,7 +33,9 @@ function SplashScreen({ onFinish }: { onFinish: () => void }) {
   useEffect(() => {
     // Start playback after the VideoView is mounted. This is required on web,
     // where calling play from the player initializer can happen too early.
-    void Promise.resolve(player.play()).catch(() => undefined);
+    if (Platform.OS !== 'web') {
+      void Promise.resolve(player.play()).catch(() => undefined);
+    }
 
     const splashTimer = setTimeout(() => {
       onFinishRef.current();
