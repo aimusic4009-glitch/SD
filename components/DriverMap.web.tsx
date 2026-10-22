@@ -91,7 +91,8 @@ export default function DriverMap({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const isReadyRef = useRef(false);
 
-  // Decoded route coordinates [lng, lat][] (mutated as the route is trimmed)
+  // Keep the decoded route immutable; derive each trimmed view from it.
+  const fullCoordsRef = useRef<[number, number][]>([]);
   const currentCoordsRef = useRef<[number, number][]>([]);
 
   // Vehicle marker state
@@ -241,6 +242,7 @@ export default function DriverMap({
       if (encodedPolyline) {
         const decoded = polyline.decode(encodedPolyline); // [[lat, lng], ...]
         const coords = decoded.map((p) => [p[1], p[0]]) as [number, number][];
+        fullCoordsRef.current = coords;
         currentCoordsRef.current = coords;
 
         const data: GeoJSON.Feature = {
@@ -363,8 +365,8 @@ const typeMap = VEHICLE_IMAGE_MAP[vehicleType || 'economy'] || VEHICLE_IMAGE_MAP
         vehicleAnimRef.current = requestAnimationFrame(step);
       }
 
-      // Trim the route: slice from the closest coordinate to the vehicle
-      const coords = currentCoordsRef.current;
+      // Trim from the full route only when the vehicle is within 60m.
+      const coords = fullCoordsRef.current;
       if (coords.length > 0) {
         let closestIdx = 0;
         let closestDist = Infinity;
@@ -377,7 +379,8 @@ const typeMap = VEHICLE_IMAGE_MAP[vehicleType || 'economy'] || VEHICLE_IMAGE_MAP
             closestIdx = i;
           }
         }
-        const trimmed = coords.slice(closestIdx);
+        const closestDistanceMeters = Math.sqrt(closestDist) * 111320;
+        const trimmed = closestDistanceMeters <= 60 ? coords.slice(closestIdx) : coords;
         currentCoordsRef.current = trimmed;
         const src = map.getSource('route-source') as maplibregl.GeoJSONSource | undefined;
         if (src) {

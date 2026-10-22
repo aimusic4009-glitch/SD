@@ -125,23 +125,30 @@ export function useActiveTrip(driverId: string | null): UseActiveTripResult {
   }, [driverId]);
 
   const liveTrip = activeTrip && liveOrder
-    ? { ...activeTrip, ...liveOrder, status: activeTrip.status, workflowType: activeTrip.workflowType ?? activeTrip.requestType }
+    ? { ...liveOrder, ...activeTrip, status: activeTrip.status, workflowType: activeTrip.workflowType ?? activeTrip.requestType }
     : activeTrip;
   const tripStatus: string | null = liveTrip?.status ?? null;
   const workflowType: WorkflowType | null =
     liveTrip?.workflowType ?? liveTrip?.requestType ?? null;
-  const polylineToPickup: string | null = liveTrip?.driverToPickupEncodedPolyline ?? null;
-  const polylineToDestination: string | null = liveTrip?.encodedPolyline ?? null;
+  const polylineToPickup: string | null = liveOrder?.driverToPickupPolyline ?? activeTrip?.driverToPickupEncodedPolyline ?? null;
+  const polylineToDestination: string | null = liveOrder?.polyline ?? activeTrip?.encodedPolyline ?? null;
+  const mergedStops = liveOrder?.stops ?? activeTrip?.stops ?? [];
+  const mergedFare = liveOrder?.fare ?? activeTrip?.fare;
+  const mergedTotal = liveOrder?.total ?? activeTrip?.total;
+  const mergedFee = liveOrder?.fee ?? activeTrip?.fee;
+  const mergedDistance = liveOrder?.distance ?? activeTrip?.distance;
+  const mergedEta = liveOrder?.tripEtaMinutes ?? activeTrip?.tripEtaMinutes;
+  const mergedTrip = { ...liveTrip, stops: mergedStops, fare: mergedFare, total: mergedTotal, fee: mergedFee, distance: mergedDistance, tripEtaMinutes: mergedEta };
 
   // Compute markers and active polyline based on status + workflow
   let markers: MarkerDef[] = [];
   let activePolyline: string | null = null;
 
   if (liveTrip && tripStatus && workflowType) {
-    const pickup = readCoord(liveTrip, 'pickupLocation', 'pickupLat', 'pickupLng');
-    const dropoff = readCoord(liveTrip, 'destinationLocation', 'dropLat', 'dropLng');
-    const store = readCoord(liveTrip, 'storeLocation', 'storeLat', 'storeLng') || pickup;
-    const stopMarkers = buildStopMarkers(liveTrip);
+    const pickup = readCoord(mergedTrip, 'pickupLocation', 'pickupLat', 'pickupLng');
+    const dropoff = readCoord(mergedTrip, 'destinationLocation', 'dropLat', 'dropLng');
+    const store = readCoord(mergedTrip, 'storeLocation', 'storeLat', 'storeLng') || pickup;
+    const stopMarkers = buildStopMarkers(mergedTrip);
 
     if (workflowType === 'direct_trip') {
       switch (tripStatus) {

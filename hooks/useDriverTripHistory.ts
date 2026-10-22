@@ -33,25 +33,29 @@ export function useDriverTripHistory(driverId: string | null, period: Period) {
     setLoading(true);
     setError(null);
     const q = query(collection(firestore, 'orders'), where('driverId', '==', driverId));
-    return onSnapshot(q, (snapshot) => {
-      const next = snapshot.docs.map((item) => {
-        const data = item.data() as any;
-        return {
-          id: item.id,
-          pickup: firstString(data.pickupAddress, data.pickup?.address, data.origin, data.pickup),
-          destination: firstString(data.destinationAddress, data.destination?.address, data.dropoffAddress, data.dropoff?.address, data.destination),
-          amount: String(data.workflowType).toLowerCase() === 'store_delivery'
-            ? firstNumber(data.fee, data.driverEarnings, data.earnings, data.amount, data.price)
-            : firstNumber(data.total, data.driverEarnings, data.earnings, data.fare, data.totalFare, data.amount, data.price),
-          createdAt: asDate(data.completedAt || data.updatedAt || data.createdAt),
-          workflowType: data.workflowType === 'direct_trip' || data.workflowType === 'store_delivery' ? data.workflowType : 'unknown',
-        };
-      }).filter((trip) => {
-        const status = (snapshot.docs.find((doc) => doc.id === trip.id)?.data() as any)?.status;
-        return ['completed', 'delivered'].includes(String(status).toLowerCase());
-      });
-      setTrips(next); setLoading(false);
-    }, () => { setError('Unable to load trip history.'); setLoading(false); });
+  return onSnapshot(q, (snapshot) => {
+    console.log('[v0] trip history snapshot size:', snapshot.size);
+    const next = snapshot.docs.flatMap((item) => {
+      const data = item.data() as any;
+      console.log('[v0] trip history order:', item.id, { status: data.status, driverStatus: data.driverStatus, driverId: data.driverId, total: data.total });
+      const status = String(data.status ?? '').toLowerCase();
+      const driverStatus = String(data.driverStatus ?? '').toLowerCase();
+      if (!['completed', 'delivered'].includes(status) && !['completed', 'delivered'].includes(driverStatus)) return [];
+      const workflowType = String(data.workflowType).toLowerCase();
+      return [{
+        id: item.id,
+        status: data.status,
+        pickup: firstString(data.pickupAddress, data.pickup, data.restaurantName),
+        destination: firstString(data.destinationAddress, data.destination, data.dropoffAddress),
+        amount: workflowType === 'store_delivery'
+          ? firstNumber(data.fee, data.driverEarnings)
+          : firstNumber(data.total, data.fare, data.fee),
+        createdAt: asDate(data.completedAt || data.deliveredAt || data.updatedAt || data.createdAt),
+        workflowType: data.workflowType === 'direct_trip' || data.workflowType === 'store_delivery' ? data.workflowType : 'unknown',
+      }];
+    });
+    setTrips(next); setLoading(false);
+  }, (error) => { console.log('[v0] trip history error:', error.code, error.message); setError(`Unable to load trip history (${error.code}): ${error.message}`); setLoading(false); });
   }, [driverId, period]);
 
   const filteredTrips = useMemo(() => {

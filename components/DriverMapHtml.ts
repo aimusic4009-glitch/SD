@@ -159,7 +159,8 @@ export function getMapHtml(initialLat: number, initialLng: number): string {
     var vehicleEl = null;
     var vehicleImg = null;
     var vehicleAnimFrame = null;
-    var currentCoords = [];   // [[lng, lat], ...] current decoded polyline
+    var fullCoords = [];      // immutable decoded route
+    var currentCoords = [];   // current rendered route
     var markersMap = {};      // id -> maplibregl.Marker
     var arrivalCardMarker = null; // arrival "Arrive by ..." pill marker
 
@@ -266,7 +267,8 @@ export function getMapHtml(initialLat: number, initialLng: number): string {
     // ---- Polyline ----
     function drawPolyline(encoded, color) {
       var decoded = polyline.decode(encoded); // [[lat, lng], ...]
-      currentCoords = decoded.map(function (p) { return [p[1], p[0]]; }); // -> [lng, lat]
+      fullCoords = decoded.map(function (p) { return [p[1], p[0]]; }); // -> [lng, lat]
+      currentCoords = fullCoords.slice();
 
       if (map.getLayer('route-layer')) map.removeLayer('route-layer');
       if (map.getSource('route-source')) map.removeSource('route-source');
@@ -289,16 +291,17 @@ export function getMapHtml(initialLat: number, initialLng: number): string {
     }
 
     function trimPolyline(driverLat, driverLng) {
-      if (!currentCoords || currentCoords.length === 0) return;
+      if (!fullCoords || fullCoords.length === 0) return;
       var closestIdx = 0;
       var closestDist = Infinity;
-      for (var i = 0; i < currentCoords.length; i++) {
-        var dLng = currentCoords[i][0] - driverLng;
-        var dLat = currentCoords[i][1] - driverLat;
+      for (var i = 0; i < fullCoords.length; i++) {
+        var dLng = fullCoords[i][0] - driverLng;
+        var dLat = fullCoords[i][1] - driverLat;
         var dist = dLng * dLng + dLat * dLat;
         if (dist < closestDist) { closestDist = dist; closestIdx = i; }
       }
-      currentCoords = currentCoords.slice(closestIdx);
+      var closestDistanceMeters = Math.sqrt(closestDist) * 111320;
+      currentCoords = closestDistanceMeters <= 60 ? fullCoords.slice(closestIdx) : fullCoords.slice();
       var src = map.getSource('route-source');
       if (src) {
         src.setData({

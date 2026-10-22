@@ -48,7 +48,7 @@ const getLocation = async () => {
   }
 };
 
-const watchLocation = async (callback: (coords: { latitude: number; longitude: number; heading: number; speed: number }) => void) => {
+const watchLocation = async (callback: (coords: { latitude: number; longitude: number; heading: number; speed: number; accuracy: number }) => void) => {
   if (Platform.OS !== 'web') {
     const Location = await import('expo-location');
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -69,6 +69,7 @@ const watchLocation = async (callback: (coords: { latitude: number; longitude: n
           longitude: loc.coords.longitude,
           heading: loc.coords.heading || 0,
           speed: loc.coords.speed || 0,
+          accuracy: loc.coords.accuracy ?? Infinity,
         });
       }
     );
@@ -80,6 +81,7 @@ const watchLocation = async (callback: (coords: { latitude: number; longitude: n
         longitude: pos.coords.longitude,
         heading: pos.coords.heading || 0,
         speed: pos.coords.speed || 0,
+        accuracy: pos.coords.accuracy ?? Infinity,
       }),
       (error) => {
         console.log('[v0] Location error:', error.message);
@@ -134,6 +136,8 @@ export default function Dashboard() {
   const [vehiclePosition, setVehiclePosition] = useState<{ lat: number; lng: number; heading: number } | null>(null);
   const stableHeadingRef = useRef(0);
   const lastAcceptedPositionRef = useRef<{ latitude: number; longitude: number } | null>(null);
+  const lastLocationWriteRef = useRef(0);
+  const sessionIdRef = useRef(`session-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -309,6 +313,10 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
       setIsOnline(nextOnline);
       setIsBusy(data?.isBusy === true);
       onlineRef.current = nextOnline;
+      if (data?.sessionId && data.sessionId !== sessionIdRef.current && nextOnline) {
+        setIsOnline(false);
+        onlineRef.current = false;
+      }
       setIsPresenceLoaded(true);
     });
 
@@ -455,7 +463,8 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
       setLocationPermissionDenied(false);
 
       const subscription = await watchLocation(async (coords) => {
-        const { latitude, longitude, heading, speed } = coords;
+        const { latitude, longitude, heading, speed, accuracy } = coords;
+        if (!Number.isFinite(accuracy) || accuracy > 50) return;
         const previous = lastAcceptedPositionRef.current;
         const toRadians = (value: number) => value * Math.PI / 180;
         const earthRadius = 6371000;
@@ -487,10 +496,13 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
         setVehiclePosition({ lat: latitude, lng: longitude, heading: stableHeadingRef.current });
 
         const geoObject = createGeoFireObject(latitude, longitude);
+        if (Date.now() - lastLocationWriteRef.current < 3000) return;
+        lastLocationWriteRef.current = Date.now();
         await set(ref(database, `driver_locations/${uid}`), {
           l: geoObject.l,
           g: geoObject.g,
           t: Date.now(),
+          sessionId: sessionIdRef.current,
         });
 
         if (activeRideId && activeRideStatus && ['accepted', 'arrived', 'started', 'at_store', 'picked_up'].includes(activeRideStatus)) {
@@ -640,6 +652,7 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
       isOnline: true,
       isBusy: false,
       lastUpdated: Date.now(),
+      sessionId: sessionIdRef.current,
     });
 
     setIsOnline(true);
