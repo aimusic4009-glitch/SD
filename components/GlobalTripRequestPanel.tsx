@@ -44,6 +44,7 @@ interface TripRequest {
     dropLng: number;
     stops?: Array<{ address: string; lat: number; lng: number }>;
     total: number;
+    fare?: number;
     fee: number;
     currency?: string;
     userName: string;
@@ -122,7 +123,11 @@ function FareSummaryPanel({
             <Text style={fareStyles.totalAmount}>{formatMoney(isStoreDelivery ? fee : total, currency)}</Text>
           </View>
 
-              {(!isStoreDelivery && (baseFare !== undefined || typeof fee === 'number')) && (
+          {(!isStoreDelivery &&
+            typeof total === 'number' &&
+            typeof fee === 'number' &&
+            fee > 0 &&
+            fee < total) && (
             <View style={fareStyles.breakdown}>
               {baseFare !== undefined && (
                 <View style={fareStyles.breakdownRow}>
@@ -411,7 +416,7 @@ export default function GlobalTripRequestPanel() {
             userName: liveField('userName'),
             userPhone: liveField('userPhone'),
             stops: Array.isArray(liveField('stops')) ? liveField('stops') : [],
-            total: liveField('total'),
+            total: liveField('total') ?? liveField('fare'),
             fee: liveField('fee'),
             currency: 'ZMW',
           } as TripRequest['data'],
@@ -713,7 +718,7 @@ export default function GlobalTripRequestPanel() {
     userName,
     userPhone,
     stops,
-    total: liveValue('total'),
+      total: liveValue('total') ?? liveValue('fare'),
     fee: liveValue('fee'),
     currency: 'ZMW',
   } as TripRequest['data'];
