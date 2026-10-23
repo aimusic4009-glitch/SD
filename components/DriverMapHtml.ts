@@ -167,6 +167,7 @@ export function getMapHtml(initialLat: number, initialLng: number): string {
     // ---- Camera / interaction state ----
     var lastVehicleLatLng = null;   // {lat, lng} latest known vehicle position
     var lastVehicleHeading = 0;     // latest heading in degrees
+    var lastVehicleType = null;
     var currentRotation = null;     // unwrapped CSS rotation, avoids 359 -> 0 spins
     var smoothedHeading = null;     // low-pass filtered compass heading
     var didInitialCenter = false;   // have we centered on the vehicle once on load?
@@ -191,9 +192,10 @@ export function getMapHtml(initialLat: number, initialLng: number): string {
       var offset = (vehicleType && typeof VEHICLE_ROTATION_OFFSET[vehicleType] === 'number')
         ? VEHICLE_ROTATION_OFFSET[vehicleType] : 0;
       function norm(a) { return ((a % 360) + 360) % 360; }
-      var target = norm(heading + offset);
+      var target = norm(heading + offset - map.getBearing());
       if (smoothedHeading === null) smoothedHeading = target;
       var filterDelta = ((target - norm(smoothedHeading) + 540) % 360) - 180;
+      if (Math.abs(filterDelta) < 3) return;
       smoothedHeading += 0.35 * filterDelta;
       smoothedHeading = ((smoothedHeading % 360) + 360) % 360;
       if (currentRotation === null) {
@@ -212,6 +214,7 @@ export function getMapHtml(initialLat: number, initialLng: number): string {
       // Track latest position/heading for the camera logic.
       lastVehicleLatLng = { lat: lat, lng: lng };
       if (typeof heading === 'number') lastVehicleHeading = heading;
+      lastVehicleType = vehicleType;
 
       if (!vehicleMarker) {
         vehicleEl = document.createElement('div');
@@ -430,6 +433,7 @@ export function getMapHtml(initialLat: number, initialLng: number): string {
     map.on('movestart', markInteraction);
     map.on('zoomstart', markInteraction);
     map.on('rotatestart', markInteraction);
+    map.on('rotate', function () { applyVehicleRotation(lastVehicleHeading, lastVehicleType); });
     map.on('dragstart', markInteraction);
 
     // Idle auto-recenter: when there is NO active trip and the user hasn't

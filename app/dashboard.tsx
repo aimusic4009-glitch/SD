@@ -94,7 +94,6 @@ const watchLocation = async (callback: (coords: { latitude: number; longitude: n
 };
 import { ref, update, onValue, off, remove, set } from 'firebase/database';
 import { clearDriverPresence } from '@/utils/driverPresence';
-import { restoreActiveTrip } from '@/services/tripRestore';
 import { Home, Mail, Clock, Settings, Phone } from 'lucide-react-native';
 import { useCall } from '@/context/CallContext';
 import ChatPanel from '@/components/ChatPanel';
@@ -105,6 +104,8 @@ import { useActiveTrip } from '@/hooks/useActiveTrip';
 import { useAudioPlayer } from 'expo-audio';
 import messageSound from '@/assets/sounds/message.mp3';
 import { createGeoFireObject } from '@/utils/geofire';
+import { distanceMeters, bearingDegrees } from '@/utils/geo';
+import { set as setLocation } from '@/utils/locationStore';
 import { getUnreadCount, listenForClientMessages, autoDeleteReadMessages, watchRideStatusForCleanup } from '@/utils/chat';
 import TripsHistory from '@/components/TripsHistory';
 import { useDriverTripHistory } from '@/hooks/useDriverTripHistory';
@@ -130,6 +131,10 @@ export default function Dashboard() {
   // Active ride state for location updates (trip managed by GlobalTripRequestPanel)
   const [activeRideId, setActiveRideId] = useState<string | null>(null);
   const [activeRideStatus, setActiveRideStatus] = useState<string | null>(null);
+  const activeRideIdRef = useRef<string | null>(null);
+  const activeRideStatusRef = useRef<string | null>(null);
+  activeRideIdRef.current = activeRideId;
+  activeRideStatusRef.current = activeRideStatus;
   const [driverData, setDriverData] = useState<any>(null);
   const [driverId, setDriverId] = useState<string | null>(null);
   const [vehicleType, setVehicleType] = useState<string>('economy');
@@ -154,28 +159,6 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
   const { callState, formattedTime, startCall } = useCall();
   const { totalEarnings, loading: tripHistoryLoading } = useDriverTripHistory(driverId, 'today');
 
-  useEffect(() => {
-    if (userStatus !== 'approved' || !driverId) return;
-    let cancelled = false;
-    const restore = async () => {
-      const result = await restoreActiveTrip();
-      if (cancelled) return;
-      if (result.endedTrip) {
-        setActiveRideId(null);
-        setActiveRideStatus(null);
-        setToastData({ clientName: 'Notice', message: result.endedTrip === 'cancelled' ? 'Your last trip was cancelled' : 'Your last trip was completed' });
-        setShowToast(true);
-      }
-    };
-    void restore();
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void restore();
-    });
-    return () => {
-      cancelled = true;
-      subscription.remove();
-    };
-  }, [driverId, userStatus]);
   const callPulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -543,22 +526,12 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
         const { latitude, longitude, heading, speed, accuracy } = coords;
         if (!Number.isFinite(accuracy) || accuracy > 50) return;
         const previous = lastAcceptedPositionRef.current;
-        const toRadians = (value: number) => value * Math.PI / 180;
-        const earthRadius = 6371000;
         const distance = previous
-          ? 2 * earthRadius * Math.asin(Math.sqrt(
-              Math.sin(toRadians(latitude - previous.latitude) / 2) ** 2 +
-              Math.cos(toRadians(previous.latitude)) * Math.cos(toRadians(latitude)) *
-              Math.sin(toRadians(longitude - previous.longitude) / 2) ** 2
-            ))
+          ? distanceMeters(previous.latitude, previous.longitude, latitude, longitude)
           : 0;
         let nextHeading = stableHeadingRef.current;
         if (previous && distance >= 5) {
-          const y = Math.sin(toRadians(longitude - previous.longitude)) * Math.cos(toRadians(latitude));
-          const x = Math.cos(toRadians(previous.latitude)) * Math.sin(toRadians(latitude)) -
-            Math.sin(toRadians(previous.latitude)) * Math.cos(toRadians(latitude)) *
-            Math.cos(toRadians(longitude - previous.longitude));
-          const bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+          const bearing = bearingDegrees(previous.latitude, previous.longitude, latitude, longitude);
           const headingDelta = Math.abs(((bearing - stableHeadingRef.current + 540) % 360) - 180);
           if (headingDelta <= 120 || distance >= 15) nextHeading = bearing;
         } else if (Number.isFinite(heading) && heading >= 0 && speed > 1.5) {
@@ -571,6 +544,7 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
         setCurrentLocation({ latitude, longitude });
         setLocationPermissionDenied(false);
         setVehiclePosition({ lat: latitude, lng: longitude, heading: stableHeadingRef.current });
+        setLocation(latitude, longitude, stableHeadingRef.current, Date.now());
 
         const geoObject = createGeoFireObject(latitude, longitude);
         if (Date.now() - lastLocationWriteRef.current < 3000) return;
@@ -582,9 +556,11 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
           sessionId: sessionIdRef.current,
         });
 
-        if (activeRideId && activeRideStatus && ['accepted', 'arrived', 'started', 'at_store', 'picked_up'].includes(activeRideStatus)) {
+        const rideId = activeRideIdRef.current;
+        const rideStatus = activeRideStatusRef.current;
+        if (rideId && rideStatus && ['accepted', 'arrived', 'started', 'at_store', 'picked_up'].includes(rideStatus)) {
           try {
-            const orderRef = doc(firestore, 'orders', activeRideId);
+            const orderRef = doc(firestore, 'orders', rideId);
             await updateDoc(orderRef, {
               driverLocation: { latitude, longitude, updatedAt: Date.now() },
             });
@@ -666,7 +642,7 @@ const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflow
       cancelled = true;
       appStateSubscription.remove();
     };
-  }, [isOnline, isPresenceLoaded, userStatus, activeRideId, activeRideStatus]);
+  }, [isOnline, isPresenceLoaded, userStatus]);
 
   useEffect(() => () => {
     void stopTracking();

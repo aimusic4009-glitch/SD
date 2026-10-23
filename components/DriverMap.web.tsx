@@ -99,6 +99,10 @@ export default function DriverMap({
   const vehicleMarkerRef = useRef<maplibregl.Marker | null>(null);
   const vehicleImgRef = useRef<HTMLImageElement | null>(null);
   const vehicleAnimRef = useRef<number | null>(null);
+  const currentRotationRef = useRef<number | null>(null);
+  const smoothedHeadingRef = useRef<number | null>(null);
+  const lastVehicleHeadingRef = useRef(0);
+  const lastVehicleTypeRef = useRef<string | undefined>(undefined);
 
   // Map of active markers keyed by id
   const markersRef = useRef<Record<string, maplibregl.Marker>>({});
@@ -121,13 +125,18 @@ export default function DriverMap({
 
   const applyVehicleRotation = (heading?: number, type?: string) => {
     const img = vehicleImgRef.current;
-    if (!img) return;
-    const offset =
-      type && typeof VEHICLE_ROTATION_OFFSET[type] === 'number'
-        ? VEHICLE_ROTATION_OFFSET[type]
-        : 0;
-    const deg = (typeof heading === 'number' ? heading : 0) + offset;
-    img.style.transform = `rotate(${deg}deg)`;
+    const map = mapRef.current;
+    if (!img || !map || typeof heading !== 'number' || !Number.isFinite(heading)) return;
+    const norm = (angle: number) => ((angle % 360) + 360) % 360;
+    const offset = type && typeof VEHICLE_ROTATION_OFFSET[type] === 'number' ? VEHICLE_ROTATION_OFFSET[type] : 0;
+    const target = norm(heading + offset - map.getBearing());
+    if (smoothedHeadingRef.current === null) smoothedHeadingRef.current = target;
+    const filterDelta = ((target - norm(smoothedHeadingRef.current) + 540) % 360) - 180;
+    if (Math.abs(filterDelta) < 3) return;
+    smoothedHeadingRef.current = norm(smoothedHeadingRef.current + 0.35 * filterDelta);
+    if (currentRotationRef.current === null) currentRotationRef.current = smoothedHeadingRef.current;
+    else currentRotationRef.current += ((norm(smoothedHeadingRef.current) - norm(currentRotationRef.current) + 540) % 360) - 180;
+    img.style.transform = `rotate(${currentRotationRef.current}deg)`;
   };
 
   // Create / update / remove the arrival card pill marker
@@ -205,6 +214,7 @@ export default function DriverMap({
     map.on('movestart', markInteraction);
     map.on('zoomstart', markInteraction);
     map.on('rotatestart', markInteraction);
+    map.on('rotate', () => applyVehicleRotation(lastVehicleHeadingRef.current, lastVehicleTypeRef.current));
     map.on('dragstart', markInteraction);
 
     // Idle auto-recenter: no active trip + 20s without interaction -> ease back.
@@ -295,7 +305,9 @@ export default function DriverMap({
 
     const run = () => {
       const { lat, lng, heading } = vehiclePosition;
-const typeMap = VEHICLE_IMAGE_MAP[vehicleType || 'economy'] || VEHICLE_IMAGE_MAP.economy;
+      lastVehicleHeadingRef.current = heading;
+      lastVehicleTypeRef.current = vehicleType;
+      const typeMap = VEHICLE_IMAGE_MAP[vehicleType || 'economy'] || VEHICLE_IMAGE_MAP.economy;
     const imgUrl = typeMap[vehicleColor || 'b'] || typeMap.b || DEFAULT_VEHICLE;
 
       // Track latest position for the camera logic.
