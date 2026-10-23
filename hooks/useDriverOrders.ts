@@ -29,7 +29,7 @@ export function useDriverOrders(driverId: string | null) {
         .filter((order) => ACTIVE_STATUSES.has(order.status))
         .sort((a, b) => timestampValue(b.updatedAt) - timestampValue(a.updatedAt))[0] ?? null;
       if (active) {
-        active.uiStatus = active.workflowType === 'store_delivery' && active.status === 'driver_assigned' ? 'accepted' : active.status;
+        active.uiStatus = (active.workflowType === 'store_delivery' || active.workflowType === 'delivery') && active.status === 'driver_assigned' ? 'accepted' : active.status;
       }
       setActiveOrder(active);
       setPendingEarnings(orders

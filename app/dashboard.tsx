@@ -130,12 +130,9 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('home');
 
   // Active ride state for location updates (trip managed by GlobalTripRequestPanel)
-  const [activeRideId, setActiveRideId] = useState<string | null>(null);
-  const [activeRideStatus, setActiveRideStatus] = useState<string | null>(null);
+  const [rtdbActive, setRtdbActive] = useState<{ orderId: string; status: string } | null>(null);
   const activeRideIdRef = useRef<string | null>(null);
   const activeRideStatusRef = useRef<string | null>(null);
-  activeRideIdRef.current = activeRideId;
-  activeRideStatusRef.current = activeRideStatus;
   const [driverData, setDriverData] = useState<any>(null);
   const [driverId, setDriverId] = useState<string | null>(null);
   const [vehicleType, setVehicleType] = useState<string>('economy');
@@ -155,7 +152,11 @@ export default function Dashboard() {
   }, [router]);
 
   // Active trip from Firestore orders (drives the live map polylines + markers)
-  const { activeOrder } = useTripRequest();
+  const { activeOrder, pendingEarnings } = useTripRequest();
+  const effectiveRideId = rtdbActive?.orderId ?? activeOrder?.orderId ?? null;
+  const effectiveRideStatus = rtdbActive?.status ?? activeOrder?.uiStatus ?? activeOrder?.status ?? null;
+  activeRideIdRef.current = effectiveRideId;
+  activeRideStatusRef.current = effectiveRideStatus;
   const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflowType, markers, activePolyline, showPolyline, arrivalTime } =
   useActiveTrip(driverId, activeOrder);
   const { callState, formattedTime, startCall } = useCall();
@@ -214,7 +215,8 @@ export default function Dashboard() {
   // auto-recenters after 20s of no interaction. The user can always zoom freely.
   const hasActiveTrip = !!tripStatus;
   const backPressRef = useRef(0);
-  const dashboardStateRef = useRef({ activeTab, showChatPanel, showInboxPanel, hasActiveTrip, isOnline });
+  const hasPendingEarnings = pendingEarnings.length > 0;
+  const dashboardStateRef = useRef({ activeTab, showChatPanel, showInboxPanel, hasActiveTrip, isOnline, hasPendingEarnings });
   const [unreadCount, setUnreadCount] = useState(0);
   const [showToast, setShowToast] = useState(false);
   const [toastData, setToastData] = useState({ clientName: '', message: '' });
@@ -226,8 +228,8 @@ export default function Dashboard() {
   }, [showChatPanel]);
 
   useEffect(() => {
-    dashboardStateRef.current = { activeTab, showChatPanel, showInboxPanel, hasActiveTrip, isOnline };
-  }, [activeTab, showChatPanel, showInboxPanel, hasActiveTrip, isOnline]);
+    dashboardStateRef.current = { activeTab, showChatPanel, showInboxPanel, hasActiveTrip, isOnline, hasPendingEarnings };
+  }, [activeTab, showChatPanel, showInboxPanel, hasActiveTrip, isOnline, hasPendingEarnings]);
 
   useEffect(() => {
     const handleBack = () => {
@@ -235,6 +237,11 @@ export default function Dashboard() {
       if (state.showChatPanel || state.showInboxPanel) {
         setShowChatPanel(false);
         setShowInboxPanel(false);
+        return true;
+      }
+      if (state.hasPendingEarnings) {
+        setToastData({ clientName: 'Notice', message: 'Tap Done on your trip summary first.' });
+        setShowToast(true);
         return true;
       }
       if (state.activeTab !== 'home') {
@@ -390,8 +397,7 @@ export default function Dashboard() {
           !['completed', 'rejected', 'expired', 'cancelled'].includes(r.status)
         );
         if (activeRequest) {
-          setActiveRideId(activeRequest.orderId);
-          setActiveRideStatus(activeRequest.status);
+          setRtdbActive({ orderId: activeRequest.orderId, status: activeRequest.status });
           setChatRideInfo({
             id: activeRequest.orderId,
             clientName: activeRequest.data?.userName || 'Client',
@@ -400,7 +406,15 @@ export default function Dashboard() {
             destinationAddress: activeRequest.data?.destinationAddress || '',
             status: activeRequest.status,
           });
+        } else {
+          setRtdbActive(null);
+          setChatRideInfo(null);
+          setUnreadCount(0);
         }
+      } else {
+        setRtdbActive(null);
+        setChatRideInfo(null);
+        setUnreadCount(0);
       }
     });
 
@@ -433,12 +447,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     const uid = auth.currentUser?.uid;
-    if (!uid || userStatus !== 'approved' || !activeRideId) {
+    if (!uid || userStatus !== 'approved' || !effectiveRideId) {
       setUnreadCount(0);
       return;
     }
 
-    const rideId = activeRideId;
+    const rideId = effectiveRideId;
     const clientId = chatRideInfo?.clientId || '';
     let subscriptionActive = true;
 
@@ -493,7 +507,7 @@ export default function Dashboard() {
       unsubscribeAutoDelete();
       unsubscribeCleanup();
     };
-  }, [activeRideId, chatRideInfo, messagePlayer, userStatus]);
+  }, [effectiveRideId, chatRideInfo, messagePlayer, userStatus]);
 
   const handleInboxPress = () => {
     const uid = auth.currentUser?.uid;
@@ -505,7 +519,7 @@ export default function Dashboard() {
 
     // If there's an active trip we can chat in, open the live chat panel.
     const validStatuses = ['accepted', 'arrived', 'started', 'at_store', 'picked_up', 'delivered'];
-    if (activeRideId && activeRideStatus && validStatuses.includes(activeRideStatus)) {
+    if (effectiveRideId && effectiveRideStatus && validStatuses.includes(effectiveRideStatus)) {
       setUnreadCount(0);
       setShowChatPanel(true);
       return;
@@ -558,8 +572,8 @@ export default function Dashboard() {
           sessionId: sessionIdRef.current,
         });
 
-        const rideId = activeRideIdRef.current;
-        const rideStatus = activeRideStatusRef.current;
+  const rideId = activeRideIdRef.current;
+  const rideStatus = activeRideStatusRef.current;
         if (rideId && rideStatus && ['accepted', 'arrived', 'started', 'at_store', 'picked_up'].includes(rideStatus)) {
           try {
             const orderRef = doc(firestore, 'orders', rideId);
@@ -914,14 +928,14 @@ if (activeTab === 'settings') {
       <ChatPanel
         visible={showChatPanel}
         onClose={() => setShowChatPanel(false)}
-        rideId={activeRideId}
+        rideId={effectiveRideId}
         clientName={chatRideInfo?.clientName || 'Client'}
         clientId={chatRideInfo?.clientId || ''}
         driverName={driverData ? `${driverData.profile?.firstName || ''} ${driverData.profile?.lastName || ''}`.trim() || 'Driver' : 'Driver'}
         pickupAddress={chatRideInfo?.pickupAddress || 'Pickup'}
         destinationAddress={chatRideInfo?.destinationAddress || 'Destination'}
-        rideStatus={activeRideStatus}
-        workflowType={workflowType}
+        rideStatus={effectiveRideStatus}
+        workflowType={workflowType === 'delivery' ? 'store_delivery' : workflowType}
         isBusy={isBusy}
         isOnline={isOnline}
       />
@@ -962,20 +976,21 @@ if (activeTab === 'settings') {
 
       {(() => {
         const liveDriverStatus = String(driverStatus || '').toLowerCase();
-        const canCallStore = workflowType === 'store_delivery' && storeCallable !== false && (
+        const canCallStore = (workflowType === 'store_delivery' || workflowType === 'delivery') && storeCallable !== false && (
           (tripStatus === 'accepted' && liveDriverStatus === 'assigned') ||
           (tripStatus === 'at_store' && liveDriverStatus === 'at_store')
         );
-        const canCallCustomer = workflowType === 'store_delivery' && ['picked_up', 'delivered'].includes(tripStatus || '');
+        const canCallCustomer = (workflowType === 'store_delivery' || workflowType === 'delivery') && ['picked_up', 'delivered'].includes(tripStatus || '');
         const canCallRider = workflowType === 'direct_trip' && ['accepted', 'arrived', 'started'].includes(tripStatus || '');
         const callTarget = canCallStore ? 'store' as const : undefined;
         const callLabel = canCallRider ? 'Call rider' : canCallStore ? 'Call store' : 'Call customer';
-        const canCall = !!activeTrip && (canCallRider || canCallStore || canCallCustomer);
+        const callOrderId = activeTrip?.orderId ?? activeOrder?.orderId ?? null;
+        const canCall = !!callOrderId && (canCallRider || canCallStore || canCallCustomer);
         if (!canCall) return null;
         const handleCall = async () => {
-          if (callState !== 'idle' || !activeTrip) return;
+          if (callState !== 'idle' || !callOrderId) return;
           try {
-            await startCall(activeTrip.orderId, callTarget, canCallCustomer ? 'Customer' : undefined);
+            await startCall(callOrderId, callTarget, canCallCustomer ? 'Customer' : canCallRider ? 'Rider' : undefined);
           } catch (error: any) {
             if (error?.status === 409 || error?.status === 403) {
               setToastData({ clientName: '', message: error.message || 'Call is not available.' });

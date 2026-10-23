@@ -32,7 +32,7 @@ const PANEL_MINIMIZED_Y = -(PANEL_HEIGHT - HANDLE_HEIGHT - STATUS_BAR_HEIGHT);
 // RTDB Trip Request structure
 interface TripRequest {
   orderId: string;
-  workflowType: 'direct_trip' | 'store_delivery';
+  workflowType: 'direct_trip' | 'store_delivery' | 'delivery';
   requestType: string;
   status: string;
   createdAt: number;
@@ -173,9 +173,12 @@ export default function GlobalTripRequestPanel() {
   // Fare summary shown to the driver once a trip is fully complete.
   const [showFarePanel, setShowFarePanel] = useState(false);
   const [completedTrip, setCompletedTrip] = useState<{
+    orderId: string;
     data: TripRequest['data'];
     workflowType: TripRequest['workflowType'];
   } | null>(null);
+  const dismissedEarningIds = useRef(new Set<string>());
+  const pendingEarning = pendingEarnings.find((order) => !dismissedEarningIds.current.has(order.orderId ?? order.id)) ?? null;
 
   // Animation value for panel position
   const panelY = useRef(new Animated.Value(PANEL_MINIMIZED_Y)).current;
@@ -452,6 +455,7 @@ export default function GlobalTripRequestPanel() {
         const liveField = (field: string) =>
           providerOrder[field] ?? (currentRequest as any)[field] ?? requestData[field];
         setCompletedTrip({
+          orderId: currentRequest.orderId,
           data: {
             ...requestData,
             pickupAddress: liveField('pickupAddress'),
@@ -717,12 +721,35 @@ export default function GlobalTripRequestPanel() {
 
   // Clears all active-trip state. Mirrors the cleanup that runs when a request
   // reaches a terminal status, and is triggered by the fare panel's Done button.
-  const handleFareDone = () => {
+  const handleFareDone = async () => {
+    const orderId = completedTrip?.orderId ?? pendingEarning?.orderId ?? pendingEarning?.id;
+    if (!orderId) return;
+
+    dismissedEarningIds.current.add(orderId);
     setShowFarePanel(false);
     setCompletedTrip(null);
     setCurrentRequest(null);
     setIsVisible(false);
     animateToPosition(PANEL_MINIMIZED_Y, false);
+
+    const acknowledge = async () => {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return false;
+      const response = await fetch(`${API_BASE}/ackDriverEarnings`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      });
+      return response.ok;
+    };
+
+    try {
+      if (await acknowledge()) return;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    try {
+      await acknowledge();
+    } catch {}
   };
 
   // CRITICAL: Do NOT render if driver is not authenticated
@@ -732,11 +759,27 @@ export default function GlobalTripRequestPanel() {
 
   // Once a trip completes, show the fare summary (it owns the screen until the
   // driver taps Done) even though currentRequest may already be cleared.
+  const restoredEarning = !completedTrip && currentRequest?.status !== 'incoming_request' ? pendingEarning : null;
   if (showFarePanel && completedTrip) {
     return (
       <FareSummaryPanel
         data={completedTrip.data}
         workflowType={completedTrip.workflowType}
+        onDone={handleFareDone}
+      />
+    );
+  }
+  if (restoredEarning) {
+    return (
+      <FareSummaryPanel
+        data={{
+          ...restoredEarning,
+          total: restoredEarning.total ?? restoredEarning.fare,
+          driverEarningsAmount: restoredEarning.driverEarningsAmount,
+          currency: restoredEarning.driverEarningsCurrency || 'ZMW',
+          stops: Array.isArray(restoredEarning.stops) ? restoredEarning.stops : [],
+        }}
+        workflowType={restoredEarning.workflowType}
         onDone={handleFareDone}
       />
     );

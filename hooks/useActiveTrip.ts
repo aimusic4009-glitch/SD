@@ -10,7 +10,7 @@ export interface MarkerDef {
   lng: number;
 }
 
-export type WorkflowType = 'direct_trip' | 'store_delivery';
+export type WorkflowType = 'direct_trip' | 'store_delivery' | 'delivery';
 
 interface UseActiveTripResult {
   activeTrip: any | null;
@@ -202,7 +202,7 @@ export function useActiveTrip(driverId: string | null, fallbackOrder?: any | nul
           markers = [];
           break;
       }
-    } else if (workflowType === 'store_delivery') {
+    } else if ((workflowType === 'store_delivery' || workflowType === 'delivery')) {
       switch (tripStatus) {
         case 'accepted':
           activePolyline = polylineToPickup;
@@ -244,7 +244,7 @@ export function useActiveTrip(driverId: string | null, fallbackOrder?: any | nul
       } else if (tripStatus === 'started') {
         etaMinutes = liveTrip?.tripEtaMinutes ?? null;
       }
-    } else if (workflowType === 'store_delivery') {
+    } else if ((workflowType === 'store_delivery' || workflowType === 'delivery')) {
       if (tripStatus === 'accepted') {
         etaMinutes = liveTrip?.driverToPickupEtaMinutes ?? null;
       } else if (tripStatus === 'picked_up') {
