@@ -7,6 +7,7 @@ import { usePathname } from 'expo-router';
 import { database, auth, firestore } from '@/config/firebase';
 import { useAudioPlayer } from 'expo-audio';
 import requestSound from '@/assets/sounds/request.mp3';
+import { useDriverOrders } from '@/hooks/useDriverOrders';
 
 // RTDB-based trip request structure
 interface TripRequestData {
@@ -18,6 +19,7 @@ interface TripRequestData {
   dropLng: number;
   total: number;
   fee: number;
+  fare?: number;
   userName: string;
   userPhone: string;
   workflowType?: string;
@@ -43,6 +45,8 @@ interface TripRequestContextType {
   isLoading: boolean;
   setIsLoading: (value: boolean) => void;
   clearRequest: () => void;
+  activeOrder: any | null;
+  pendingEarnings: any[];
 }
 
 const TripRequestContext = createContext<TripRequestContextType | undefined>(undefined);
@@ -57,6 +61,7 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
   const pathname = usePathname();
   const requestPlayer = useAudioPlayer(requestSound);
+  const { activeOrder, pendingEarnings } = useDriverOrders(driverUid);
 
   // Listen for auth state changes to get authenticated driver UID
   useEffect(() => {
@@ -195,6 +200,8 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
         isLoading,
         setIsLoading,
         clearRequest,
+        activeOrder,
+        pendingEarnings,
       }}
     >
       {children}

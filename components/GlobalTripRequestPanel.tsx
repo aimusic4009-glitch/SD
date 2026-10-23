@@ -16,6 +16,7 @@ import { ref, onValue, off } from 'firebase/database';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { database, auth, firestore } from '@/config/firebase';
+import { useTripRequest } from '@/context/IncomingRidesContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -47,6 +48,7 @@ interface TripRequest {
     total: number;
     fare?: number;
     fee: number;
+    driverEarningsAmount?: number;
     currency?: string;
     userName: string;
     userPhone: string;
@@ -93,7 +95,7 @@ function FareSummaryPanel({
   }, [slideY]);
 
   const currency = 'ZMW';
-  const total = data?.total;
+  const total = data?.total ?? data?.fare;
   const fee = data?.fee;
   const isStoreDelivery = workflowType === 'store_delivery';
   const customerName = data?.userName || 'Customer';
@@ -121,7 +123,7 @@ function FareSummaryPanel({
 
           <View style={fareStyles.totalBox}>
             <Text style={fareStyles.totalLabel}>Total earned</Text>
-            <Text style={fareStyles.totalAmount}>{formatMoney(isStoreDelivery ? fee : total, currency)}</Text>
+            <Text style={fareStyles.totalAmount}>{formatMoney(data?.driverEarningsAmount ?? (isStoreDelivery ? fee : total), currency)}</Text>
           </View>
 
           {(!isStoreDelivery &&
@@ -155,6 +157,7 @@ function FareSummaryPanel({
 }
 
 export default function GlobalTripRequestPanel() {
+  const { activeOrder, pendingEarnings } = useTripRequest();
   const [driverUid, setDriverUid] = useState<string | null>(null);
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
   const [currentRequest, setCurrentRequest] = useState<TripRequest | null>(null);
@@ -379,6 +382,35 @@ export default function GlobalTripRequestPanel() {
 
     return () => off(tripRequestsRef, 'value', listener);
   }, [driverUid, currentRequest?.status, isVisible, isMinimized, serverTimeOffset, animateToPosition]);
+
+  useEffect(() => {
+    if (!activeOrder || currentRequest?.status === 'incoming_request') return;
+    if (currentRequest?.orderId === activeOrder.orderId && currentRequest?.status === activeOrder.uiStatus) return;
+    const orderData = activeOrder.data ?? activeOrder;
+    setCurrentRequest({
+      orderId: activeOrder.orderId ?? activeOrder.id,
+      workflowType: activeOrder.workflowType,
+      requestType: activeOrder.workflowType,
+      status: activeOrder.uiStatus ?? activeOrder.status,
+      createdAt: activeOrder.createdAt ?? 0,
+      expiresAt: 0,
+      data: {
+        ...orderData,
+        pickupAddress: activeOrder.pickupAddress,
+        destinationAddress: activeOrder.destinationAddress,
+        pickupLat: activeOrder.pickupLat,
+        pickupLng: activeOrder.pickupLng,
+        dropLat: activeOrder.dropLat,
+        dropLng: activeOrder.dropLng,
+        total: activeOrder.total ?? activeOrder.fare,
+        fee: activeOrder.fee,
+        userName: activeOrder.userName,
+        userPhone: activeOrder.userPhone,
+        stops: activeOrder.stops,
+      },
+    });
+    setIsVisible(true);
+  }, [activeOrder, currentRequest?.orderId, currentRequest?.status]);
 
   // CENTRALIZED status update handler - ALL buttons use this same pattern
   // Matches the ACCEPT button behavior which is already working correctly

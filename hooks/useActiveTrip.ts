@@ -74,7 +74,34 @@ function buildStopMarkers(order: any): MarkerDef[] {
   return markers;
 }
 
-export function useActiveTrip(driverId: string | null): UseActiveTripResult {
+function orderToTrip(order: any) {
+  if (!order) return null;
+  return {
+    orderId: order.orderId ?? order.id,
+    workflowType: order.workflowType,
+    requestType: order.workflowType,
+    status: order.uiStatus ?? order.status,
+    createdAt: order.createdAt ?? 0,
+    expiresAt: 0,
+    pickupLat: order.pickupLat ?? order.pickupLocation?.latitude,
+    pickupLng: order.pickupLng ?? order.pickupLocation?.longitude,
+    dropLat: order.dropLat ?? order.destinationLocation?.latitude,
+    dropLng: order.dropLng ?? order.destinationLocation?.longitude,
+    pickupAddress: order.pickupAddress,
+    destinationAddress: order.destinationAddress,
+    stops: order.stops,
+    encodedPolyline: order.polyline,
+    driverToPickupEncodedPolyline: order.driverToPickupPolyline,
+    tripDistanceKm: order.distanceKm,
+    tripEtaMinutes: order.durationMinutes,
+    total: order.total ?? order.fare,
+    fee: order.fee,
+    data: order,
+    ...order,
+  };
+}
+
+export function useActiveTrip(driverId: string | null, fallbackOrder?: any | null): UseActiveTripResult {
   const [activeTrip, setActiveTrip] = useState<any | null>(null);
   const [liveOrder, setLiveOrder] = useState<any | null>(null);
 
@@ -124,14 +151,16 @@ export function useActiveTrip(driverId: string | null): UseActiveTripResult {
     return () => off(tripRequestsRef, 'value', listener);
   }, [driverId]);
 
-  const liveTrip = activeTrip && liveOrder
-    ? { ...liveOrder, ...activeTrip, status: activeTrip.status, workflowType: activeTrip.workflowType ?? activeTrip.requestType }
-    : activeTrip;
+  const fallbackTrip = !activeTrip ? orderToTrip(fallbackOrder) : null;
+  const tripSource = activeTrip ?? fallbackTrip;
+  const liveTrip = tripSource && liveOrder
+    ? { ...liveOrder, ...tripSource, status: tripSource.status, workflowType: tripSource.workflowType ?? tripSource.requestType }
+    : tripSource;
   const tripStatus: string | null = liveTrip?.status ?? null;
   const workflowType: WorkflowType | null =
     liveTrip?.workflowType ?? liveTrip?.requestType ?? null;
-  const polylineToPickup: string | null = liveOrder?.driverToPickupPolyline ?? activeTrip?.driverToPickupEncodedPolyline ?? null;
-  const polylineToDestination: string | null = liveOrder?.polyline ?? activeTrip?.encodedPolyline ?? null;
+  const polylineToPickup: string | null = liveOrder?.driverToPickupPolyline ?? tripSource?.driverToPickupEncodedPolyline ?? null;
+  const polylineToDestination: string | null = liveOrder?.polyline ?? tripSource?.encodedPolyline ?? null;
   const mergedStops = liveOrder?.stops ?? activeTrip?.stops ?? [];
   const mergedFare = liveOrder?.fare ?? activeTrip?.fare;
   const mergedTotal = liveOrder?.total ?? activeTrip?.total;

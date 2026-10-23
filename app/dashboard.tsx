@@ -101,6 +101,7 @@ import InboxPanel from '@/components/InboxPanel';
 import ToastNotification from '@/components/ToastNotification';
 import DriverMap from '@/components/DriverMap';
 import { useActiveTrip } from '@/hooks/useActiveTrip';
+import { useTripRequest } from '@/context/IncomingRidesContext';
 import { useAudioPlayer } from 'expo-audio';
 import messageSound from '@/assets/sounds/message.mp3';
 import { createGeoFireObject } from '@/utils/geofire';
@@ -154,8 +155,9 @@ export default function Dashboard() {
   }, [router]);
 
   // Active trip from Firestore orders (drives the live map polylines + markers)
-const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflowType, markers, activePolyline, showPolyline, arrivalTime } =
-  useActiveTrip(driverId);
+  const { activeOrder } = useTripRequest();
+  const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflowType, markers, activePolyline, showPolyline, arrivalTime } =
+  useActiveTrip(driverId, activeOrder);
   const { callState, formattedTime, startCall } = useCall();
   const { totalEarnings, loading: tripHistoryLoading } = useDriverTripHistory(driverId, 'today');
 
