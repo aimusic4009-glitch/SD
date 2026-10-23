@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { normalizeWorkflow } from '@/utils/workflow';
 import { Platform } from 'react-native';
 import { ref, onValue, off } from 'firebase/database';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -22,14 +23,14 @@ interface TripRequestData {
   fare?: number;
   userName: string;
   userPhone: string;
-  workflowType?: string;
+  workflowType?: 'direct_trip' | 'store_delivery' | 'delivery';
   serviceType?: string;
   dispatchService?: string;
 }
 
 interface TripRequest {
   orderId: string;
-  workflowType: 'direct_trip' | 'store_delivery';
+  workflowType: 'direct_trip' | 'store_delivery' | 'delivery';
   requestType: string;
   status: string;
   createdAt: number;
@@ -47,6 +48,7 @@ interface TripRequestContextType {
   clearRequest: () => void;
   activeOrder: any | null;
   pendingEarnings: any[];
+  dismissEarning: (orderId: string) => void;
 }
 
 const TripRequestContext = createContext<TripRequestContextType | undefined>(undefined);
@@ -61,7 +63,14 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
   const pathname = usePathname();
   const requestPlayer = useAudioPlayer(requestSound);
-  const { activeOrder, pendingEarnings } = useDriverOrders(driverUid);
+  const { activeOrder, pendingEarnings: rawPendingEarnings } = useDriverOrders(driverUid);
+  const dismissedEarningIds = useRef(new Set<string>());
+  const [, forceEarningsUpdate] = useState(0);
+  const pendingEarnings = rawPendingEarnings.filter((order) => !dismissedEarningIds.current.has(order.orderId ?? order.id));
+  const dismissEarning = (orderId: string) => {
+    dismissedEarningIds.current.add(orderId);
+    forceEarningsUpdate((value) => value + 1);
+  };
 
   // Listen for auth state changes to get authenticated driver UID
   useEffect(() => {
@@ -202,6 +211,7 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
         clearRequest,
         activeOrder,
         pendingEarnings,
+        dismissEarning,
       }}
     >
       {children}

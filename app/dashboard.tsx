@@ -102,6 +102,7 @@ import ToastNotification from '@/components/ToastNotification';
 import DriverMap from '@/components/DriverMap';
 import { useActiveTrip } from '@/hooks/useActiveTrip';
 import { useTripRequest } from '@/context/IncomingRidesContext';
+import { isStoreWorkflow } from '@/utils/workflow';
 import { useAudioPlayer } from 'expo-audio';
 import messageSound from '@/assets/sounds/message.mp3';
 import { createGeoFireObject } from '@/utils/geofire';
@@ -187,7 +188,7 @@ export default function Dashboard() {
     if (workflowType === 'direct_trip') {
       if (tripStatus === 'accepted') arrivalTargetId = 'pickup';
       else if (tripStatus === 'started') arrivalTargetId = 'dropoff';
-    } else if (workflowType === 'store_delivery') {
+    } else if (isStoreWorkflow(workflowType)) {
       if (tripStatus === 'accepted') arrivalTargetId = 'store';
       else if (tripStatus === 'picked_up') arrivalTargetId = 'dropoff';
     }
@@ -935,7 +936,7 @@ if (activeTab === 'settings') {
         pickupAddress={chatRideInfo?.pickupAddress || 'Pickup'}
         destinationAddress={chatRideInfo?.destinationAddress || 'Destination'}
         rideStatus={effectiveRideStatus}
-        workflowType={workflowType === 'delivery' ? 'store_delivery' : workflowType}
+        workflowType={workflowType as 'direct_trip' | 'store_delivery' | null}
         isBusy={isBusy}
         isOnline={isOnline}
       />
@@ -976,11 +977,11 @@ if (activeTab === 'settings') {
 
       {(() => {
         const liveDriverStatus = String(driverStatus || '').toLowerCase();
-        const canCallStore = (workflowType === 'store_delivery' || workflowType === 'delivery') && storeCallable !== false && (
+        const canCallStore = isStoreWorkflow(workflowType) && storeCallable !== false && (
           (tripStatus === 'accepted' && liveDriverStatus === 'assigned') ||
           (tripStatus === 'at_store' && liveDriverStatus === 'at_store')
         );
-        const canCallCustomer = (workflowType === 'store_delivery' || workflowType === 'delivery') && ['picked_up', 'delivered'].includes(tripStatus || '');
+        const canCallCustomer = isStoreWorkflow(workflowType) && ['picked_up', 'delivered'].includes(tripStatus || '');
         const canCallRider = workflowType === 'direct_trip' && ['accepted', 'arrived', 'started'].includes(tripStatus || '');
         const callTarget = canCallStore ? 'store' as const : undefined;
         const callLabel = canCallRider ? 'Call rider' : canCallStore ? 'Call store' : 'Call customer';

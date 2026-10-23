@@ -17,6 +17,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { database, auth, firestore } from '@/config/firebase';
 import { useTripRequest } from '@/context/IncomingRidesContext';
+import { normalizeWorkflow, isStoreWorkflow } from '@/utils/workflow';
 
 const { width, height } = Dimensions.get('window');
 
@@ -97,7 +98,7 @@ function FareSummaryPanel({
   const currency = 'ZMW';
   const total = data?.total ?? data?.fare;
   const fee = data?.fee;
-  const isStoreDelivery = workflowType === 'store_delivery';
+  const isStoreDelivery = isStoreWorkflow(workflowType);
   const customerName = data?.userName || 'Customer';
   // Derive a base fare when both total and fee are present.
   const baseFare =
@@ -157,7 +158,7 @@ function FareSummaryPanel({
 }
 
 export default function GlobalTripRequestPanel() {
-  const { activeOrder, pendingEarnings } = useTripRequest();
+  const { activeOrder, pendingEarnings, dismissEarning } = useTripRequest();
   const [driverUid, setDriverUid] = useState<string | null>(null);
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
   const [currentRequest, setCurrentRequest] = useState<TripRequest | null>(null);
@@ -177,8 +178,7 @@ export default function GlobalTripRequestPanel() {
     data: TripRequest['data'];
     workflowType: TripRequest['workflowType'];
   } | null>(null);
-  const dismissedEarningIds = useRef(new Set<string>());
-  const pendingEarning = pendingEarnings.find((order) => !dismissedEarningIds.current.has(order.orderId ?? order.id)) ?? null;
+  const pendingEarning = pendingEarnings[0] ?? null;
 
   // Animation value for panel position
   const panelY = useRef(new Animated.Value(PANEL_MINIMIZED_Y)).current;
@@ -392,8 +392,8 @@ export default function GlobalTripRequestPanel() {
     const orderData = activeOrder.data ?? activeOrder;
     setCurrentRequest({
       orderId: activeOrder.orderId ?? activeOrder.id,
-      workflowType: activeOrder.workflowType,
-      requestType: activeOrder.workflowType,
+          workflowType: normalizeWorkflow(activeOrder.workflowType) as TripRequest['workflowType'],
+      requestType: normalizeWorkflow(activeOrder.workflowType) ?? 'direct_trip',
       status: activeOrder.uiStatus ?? activeOrder.status,
       createdAt: activeOrder.createdAt ?? 0,
       expiresAt: 0,
@@ -467,7 +467,7 @@ export default function GlobalTripRequestPanel() {
             fee: liveField('fee'),
             currency: 'ZMW',
           } as TripRequest['data'],
-          workflowType: currentRequest.workflowType,
+          workflowType: normalizeWorkflow(currentRequest.workflowType) as TripRequest['workflowType'],
         });
         setShowFarePanel(true);
       }
@@ -584,7 +584,7 @@ export default function GlobalTripRequestPanel() {
     }
 
     // DELIVERY flow: incoming_request -> accepted -> at_store -> picked_up -> delivered -> completed
-    if (workflowType === 'store_delivery') {
+    if (isStoreWorkflow(workflowType)) {
       switch (status) {
         case 'incoming_request':
           return (
@@ -707,7 +707,7 @@ export default function GlobalTripRequestPanel() {
   const getWorkflowIcon = () => {
     if (!currentRequest) return <Car color="#333" size={20} />;
     
-    if (currentRequest.workflowType === 'store_delivery') {
+    if (isStoreWorkflow(currentRequest.workflowType)) {
       return <Package color="#FF6B00" size={20} />;
     }
     
@@ -725,7 +725,7 @@ export default function GlobalTripRequestPanel() {
     const orderId = completedTrip?.orderId ?? pendingEarning?.orderId ?? pendingEarning?.id;
     if (!orderId) return;
 
-    dismissedEarningIds.current.add(orderId);
+    dismissEarning(orderId);
     setShowFarePanel(false);
     setCompletedTrip(null);
     setCurrentRequest(null);
@@ -774,6 +774,7 @@ export default function GlobalTripRequestPanel() {
       <FareSummaryPanel
         data={{
           ...restoredEarning,
+          workflowType: normalizeWorkflow(restoredEarning.workflowType),
           total: restoredEarning.total ?? restoredEarning.fare,
           driverEarningsAmount: restoredEarning.driverEarningsAmount,
           currency: restoredEarning.driverEarningsCurrency || 'ZMW',

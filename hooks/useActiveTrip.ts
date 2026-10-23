@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ref, onValue, off } from 'firebase/database';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { database, firestore } from '@/config/firebase';
+import { normalizeWorkflow } from '@/utils/workflow';
 
 export interface MarkerDef {
   id: string;
@@ -78,8 +79,8 @@ function orderToTrip(order: any) {
   if (!order) return null;
   return {
     orderId: order.orderId ?? order.id,
-    workflowType: order.workflowType,
-    requestType: order.workflowType,
+  workflowType: normalizeWorkflow(order.workflowType),
+  requestType: normalizeWorkflow(order.workflowType),
     status: order.uiStatus ?? order.status,
     createdAt: order.createdAt ?? 0,
     expiresAt: 0,
@@ -140,7 +141,7 @@ export function useActiveTrip(driverId: string | null, fallbackOrder?: any | nul
         const terminal = ['completed', 'cancelled', 'rejected', 'expired'];
         const requests = Object.values(data) as any[];
         const activeRequest = requests.find((r) => !terminal.includes(r?.status)) || null;
-        setActiveTrip(activeRequest);
+        setActiveTrip(activeRequest ? { ...activeRequest, workflowType: normalizeWorkflow(activeRequest.workflowType), requestType: normalizeWorkflow(activeRequest.requestType) } : null);
       },
       (error) => {
         console.log('[v0] useActiveTrip listener error:', error.message);
@@ -154,11 +155,11 @@ export function useActiveTrip(driverId: string | null, fallbackOrder?: any | nul
   const fallbackTrip = !activeTrip ? orderToTrip(fallbackOrder) : null;
   const tripSource = activeTrip ?? fallbackTrip;
   const liveTrip = tripSource && liveOrder
-    ? { ...liveOrder, ...tripSource, status: tripSource.status, workflowType: tripSource.workflowType ?? tripSource.requestType }
+    ? { ...liveOrder, ...tripSource, status: tripSource.status, workflowType: normalizeWorkflow(tripSource.workflowType ?? tripSource.requestType) }
     : tripSource;
   const tripStatus: string | null = liveTrip?.status ?? null;
   const workflowType: WorkflowType | null =
-    liveTrip?.workflowType ?? liveTrip?.requestType ?? null;
+    normalizeWorkflow(liveTrip?.workflowType ?? liveTrip?.requestType) as WorkflowType | null;
   const polylineToPickup: string | null = liveOrder?.driverToPickupPolyline ?? tripSource?.driverToPickupEncodedPolyline ?? null;
   const polylineToDestination: string | null = liveOrder?.polyline ?? tripSource?.encodedPolyline ?? null;
   const mergedStops = liveOrder?.stops ?? activeTrip?.stops ?? [];

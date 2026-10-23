@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { firestore } from '@/config/firebase';
+import { normalizeWorkflow, isStoreWorkflow } from '@/utils/workflow';
 
 type Period = 'today' | 'week' | 'month';
 export type DriverTrip = { id: string; pickup: string; destination: string; amount: number; createdAt: Date | null; workflowType: 'direct_trip' | 'store_delivery' | 'unknown' };
@@ -34,28 +35,26 @@ export function useDriverTripHistory(driverId: string | null, period: Period) {
     setError(null);
     const q = query(collection(firestore, 'orders'), where('driverId', '==', driverId));
   return onSnapshot(q, (snapshot) => {
-    console.log('[v0] trip history snapshot size:', snapshot.size);
     const next = snapshot.docs.flatMap((item) => {
       const data = item.data() as any;
-      console.log('[v0] trip history order:', item.id, { status: data.status, driverStatus: data.driverStatus, driverId: data.driverId, total: data.total });
       const status = String(data.status ?? '').toLowerCase();
       const driverStatus = String(data.driverStatus ?? '').toLowerCase();
       if (!['completed', 'delivered'].includes(status) && !['completed', 'delivered'].includes(driverStatus)) return [];
-      const workflowType = String(data.workflowType).toLowerCase();
+      const workflowType = normalizeWorkflow(String(data.workflowType).toLowerCase()) as 'direct_trip' | 'store_delivery' | null;
       return [{
         id: item.id,
         status: data.status,
         pickup: firstString(data.pickupAddress, data.pickup, data.restaurantName),
         destination: firstString(data.destinationAddress, data.destination, data.dropoffAddress),
-        amount: workflowType === 'store_delivery'
+        amount: isStoreWorkflow(workflowType)
           ? firstNumber(data.fee, data.driverEarnings)
           : firstNumber(data.total, data.fare, data.fee),
         createdAt: asDate(data.completedAt || data.deliveredAt || data.updatedAt || data.createdAt),
-        workflowType: data.workflowType === 'direct_trip' || data.workflowType === 'store_delivery' ? data.workflowType : 'unknown',
+        workflowType: (workflowType === 'direct_trip' || workflowType === 'store_delivery' ? workflowType : 'unknown') as DriverTrip['workflowType'],
       }];
     });
     setTrips(next); setLoading(false);
-  }, (error) => { console.log('[v0] trip history error:', error.code, error.message); setError(`Unable to load trip history (${error.code}): ${error.message}`); setLoading(false); });
+  }, (error) => { setError(`Unable to load trip history (${error.code}): ${error.message}`); setLoading(false); });
   }, [driverId, period]);
 
   const filteredTrips = useMemo(() => {

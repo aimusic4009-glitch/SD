@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { firestore } from '@/config/firebase';
+import { normalizeWorkflow, isStoreWorkflow } from '@/utils/workflow';
 
 const ACTIVE_STATUSES = new Set(['accepted', 'driver_assigned', 'arrived', 'started', 'at_store', 'picked_up', 'delivered']);
 
@@ -24,12 +25,15 @@ export function useDriverOrders(driverId: string | null) {
 
     const ordersQuery = query(collection(firestore, 'orders'), where('driverId', '==', driverId));
     return onSnapshot(ordersQuery, (snapshot) => {
-      const orders = snapshot.docs.map((item) => ({ id: item.id, orderId: item.id, ...item.data() })) as any[];
+      const orders = snapshot.docs.map((item) => {
+        const order = { id: item.id, orderId: item.id, ...item.data() } as any;
+        return { ...order, workflowType: normalizeWorkflow(order.workflowType) };
+      });
       const active = orders
         .filter((order) => ACTIVE_STATUSES.has(order.status))
         .sort((a, b) => timestampValue(b.updatedAt) - timestampValue(a.updatedAt))[0] ?? null;
       if (active) {
-        active.uiStatus = (active.workflowType === 'store_delivery' || active.workflowType === 'delivery') && active.status === 'driver_assigned' ? 'accepted' : active.status;
+        active.uiStatus = isStoreWorkflow(active.workflowType) && active.status === 'driver_assigned' ? 'accepted' : active.status;
       }
       setActiveOrder(active);
       setPendingEarnings(orders
