@@ -231,7 +231,7 @@ export default function Dashboard() {
     const unlock = () => {
       try {
         messagePlayer.seekTo(0);
-        void Promise.resolve(messagePlayer.play()).then(() => messagePlayer.pause()).catch(() => undefined);
+        void Promise.resolve(messagePlayer.play()).catch(() => undefined);
       } catch {}
     };
     document.addEventListener('pointerdown', unlock, { once: true });

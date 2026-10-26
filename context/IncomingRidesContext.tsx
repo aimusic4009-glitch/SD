@@ -79,7 +79,7 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
     const unlock = () => {
       try {
         requestPlayer.seekTo(0);
-        void Promise.resolve(requestPlayer.play()).then(() => requestPlayer.pause()).catch(() => undefined);
+        void Promise.resolve(requestPlayer.play()).catch(() => undefined);
       } catch {}
     };
     document.addEventListener('pointerdown', unlock, { once: true });
