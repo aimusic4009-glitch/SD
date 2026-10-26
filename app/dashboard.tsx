@@ -222,7 +222,21 @@ export default function Dashboard() {
   const [showToast, setShowToast] = useState(false);
   const [toastData, setToastData] = useState({ clientName: '', message: '' });
   const [chatRideInfo, setChatRideInfo] = useState<any>(null);
+  const chatRideInfoRef = useRef<any>(null);
+  chatRideInfoRef.current = chatRideInfo;
   const messagePlayer = useAudioPlayer(messageSound);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const unlock = () => {
+      try {
+        messagePlayer.seekTo(0);
+        void Promise.resolve(messagePlayer.play()).then(() => messagePlayer.pause()).catch(() => undefined);
+      } catch {}
+    };
+    document.addEventListener('pointerdown', unlock, { once: true });
+    return () => document.removeEventListener('pointerdown', unlock);
+  }, [messagePlayer]);
 
   useEffect(() => {
     showChatPanelRef.current = showChatPanel;
@@ -447,6 +461,19 @@ export default function Dashboard() {
   }, [trackWidth, isOnline]);
 
   useEffect(() => {
+    if (!rtdbActive && activeOrder?.orderId) {
+      setChatRideInfo({
+        id: activeOrder.orderId,
+        clientName: activeOrder.userName || 'Client',
+        clientId: activeOrder.userId || '',
+        pickupAddress: activeOrder.pickupAddress || '',
+        destinationAddress: activeOrder.destinationAddress || '',
+        status: activeOrder.uiStatus ?? activeOrder.status,
+      });
+    }
+  }, [rtdbActive, activeOrder]);
+
+  useEffect(() => {
     const uid = auth.currentUser?.uid;
     if (!uid || userStatus !== 'approved' || !effectiveRideId) {
       setUnreadCount(0);
@@ -454,7 +481,7 @@ export default function Dashboard() {
     }
 
     const rideId = effectiveRideId;
-    const clientId = chatRideInfo?.clientId || '';
+    const clientId = chatRideInfoRef.current?.clientId || '';
     let subscriptionActive = true;
 
     console.log('[chat] subscribing to active ride', { rideId, driverId: uid });
@@ -470,21 +497,15 @@ export default function Dashboard() {
       (message, messageId) => {
         console.log('[chat] client message received', { rideId, messageId, senderId: message.senderId });
         if (subscriptionActive && message.senderId !== uid && !showChatPanelRef.current) {
-          if (Platform.OS !== 'web') {
-            try {
-              messagePlayer.seekTo(0);
-              Promise.resolve(messagePlayer.play()).catch((error) => {
-                if (subscriptionActive) {
-                  console.log('[v0] Message alert playback failed:', error);
-                }
-              });
-            } catch (error) {
-              if (subscriptionActive) {
-                console.log('[v0] Message alert playback failed:', error);
-              }
-            }
+          try {
+            messagePlayer.seekTo(0);
+            Promise.resolve(messagePlayer.play()).catch((error) => {
+              if (subscriptionActive) console.log('[v0] Message alert playback failed:', error);
+            });
+          } catch (error) {
+            if (subscriptionActive) console.log('[v0] Message alert playback failed:', error);
           }
-          const clientName = chatRideInfo?.clientName || 'Client';
+          const clientName = chatRideInfoRef.current?.clientName || 'Client';
           setToastData({
             clientName,
             message: message.text,
@@ -496,9 +517,9 @@ export default function Dashboard() {
 
     const unsubscribeAutoDelete = autoDeleteReadMessages(database, rideId, clientId, uid);
     const unsubscribeCleanup = watchRideStatusForCleanup(database, rideId, uid, {
-      clientName: chatRideInfo?.clientName || 'Client',
-      pickupAddress: chatRideInfo?.pickupAddress || '',
-      destinationAddress: chatRideInfo?.destinationAddress || '',
+      clientName: chatRideInfoRef.current?.clientName || 'Client',
+      pickupAddress: chatRideInfoRef.current?.pickupAddress || '',
+      destinationAddress: chatRideInfoRef.current?.destinationAddress || '',
     });
 
     return () => {
@@ -508,7 +529,7 @@ export default function Dashboard() {
       unsubscribeAutoDelete();
       unsubscribeCleanup();
     };
-  }, [effectiveRideId, chatRideInfo, messagePlayer, userStatus]);
+  }, [effectiveRideId, messagePlayer, userStatus]);
 
   const handleInboxPress = () => {
     const uid = auth.currentUser?.uid;

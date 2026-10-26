@@ -63,6 +63,7 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
   const pathname = usePathname();
   const requestPlayer = useAudioPlayer(requestSound);
+  const ringedOrderIdRef = useRef<string | null>(null);
   const { activeOrder, pendingEarnings: rawPendingEarnings } = useDriverOrders(driverUid);
   const dismissedEarningIds = useRef(new Set<string>());
   const [, forceEarningsUpdate] = useState(0);
@@ -73,6 +74,18 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
   };
 
   // Listen for auth state changes to get authenticated driver UID
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const unlock = () => {
+      try {
+        requestPlayer.seekTo(0);
+        void Promise.resolve(requestPlayer.play()).then(() => requestPlayer.pause()).catch(() => undefined);
+      } catch {}
+    };
+    document.addEventListener('pointerdown', unlock, { once: true });
+    return () => document.removeEventListener('pointerdown', unlock);
+  }, [requestPlayer]);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user?.uid) {
@@ -126,15 +139,10 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
       const data = snapshot.val();
 
       if (!data) {
-        // No requests - hide panel only if status was terminal
-        if (!currentRequest || 
-            currentRequest.status === 'completed' || 
-            currentRequest.status === 'rejected' || 
-            currentRequest.status === 'expired' ||
-            currentRequest.status === 'cancelled') {
-          setCurrentRequest(null);
-          setIsVisible(false);
-        }
+        setCurrentRequest(null);
+        setIsVisible(false);
+        try { requestPlayer.pause(); requestPlayer.seekTo(0); } catch {}
+        ringedOrderIdRef.current = null;
         return;
       }
 
@@ -145,10 +153,10 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
       })) as TripRequest[];
 
       if (requests.length === 0) {
-        if (!currentRequest || ['completed', 'rejected', 'expired', 'cancelled'].includes(currentRequest.status)) {
-          setCurrentRequest(null);
-          setIsVisible(false);
-        }
+        setCurrentRequest(null);
+        setIsVisible(false);
+        try { requestPlayer.pause(); requestPlayer.seekTo(0); } catch {}
+        ringedOrderIdRef.current = null;
         return;
       }
 
@@ -161,17 +169,19 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
       if (activeRequest) {
         setCurrentRequest(activeRequest);
 
-        // Show panel and play the alert only where the panel is rendered.
         const canExposeRequest = verificationStatus === 'approved' && pathname === '/dashboard';
-        if (!isVisible && canExposeRequest) {
+        if (canExposeRequest) {
           setIsVisible(true);
           setIsMinimized(false);
-            if (Platform.OS !== 'web') {
-              try {
-                requestPlayer.seekTo(0);
-                void Promise.resolve(requestPlayer.play()).catch(() => undefined);
-              } catch {}
-            }
+        }
+        if (activeRequest.status === 'incoming_request' && activeRequest.orderId !== ringedOrderIdRef.current) {
+          ringedOrderIdRef.current = activeRequest.orderId;
+          try {
+            requestPlayer.seekTo(0);
+            void Promise.resolve(requestPlayer.play()).catch(() => undefined);
+          } catch {}
+        } else if (activeRequest.status !== 'incoming_request') {
+          try { requestPlayer.pause(); requestPlayer.seekTo(0); } catch {}
         }
 
         // Handle terminal statuses - hide after brief delay
@@ -182,10 +192,10 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
           }, 1000);
         }
       } else {
-        // No active request found
         setCurrentRequest(null);
         setIsVisible(false);
         try { requestPlayer.pause(); requestPlayer.seekTo(0); } catch {}
+        ringedOrderIdRef.current = null;
       }
     });
 
@@ -197,6 +207,7 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
     setIsVisible(false);
     setIsMinimized(false);
     try { requestPlayer.pause(); requestPlayer.seekTo(0); } catch {}
+    ringedOrderIdRef.current = null;
   };
 
   return (

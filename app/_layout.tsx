@@ -19,9 +19,7 @@ function SplashScreen({ onFinish }: { onFinish: () => void }) {
   const player = useVideoPlayer(flashVideo, (videoPlayer) => {
     videoPlayer.loop = false;
     videoPlayer.muted = true;
-    if (Platform.OS !== 'web') {
-      void Promise.resolve(videoPlayer.play()).catch(() => undefined);
-    }
+    videoPlayer.currentTime = 0;
   });
 
   const onFinishRef = useRef(onFinish);
@@ -30,18 +28,27 @@ function SplashScreen({ onFinish }: { onFinish: () => void }) {
     onFinishRef.current = onFinish;
   }, [onFinish]);
 
+  const startedRef = useRef(false);
+
   useEffect(() => {
-    // Start playback after the VideoView is mounted. This is required on web,
-    // where calling play from the player initializer can happen too early.
-    if (Platform.OS !== 'web') {
-      void Promise.resolve(player.play()).catch(() => undefined);
-    }
+    const startWhenReady = ({ status }: { status: string }) => {
+      if (status === 'readyToPlay' && !startedRef.current) {
+        startedRef.current = true;
+        player.currentTime = 0;
+        Promise.resolve(player.play()).catch(() => undefined);
+      }
+    };
+    const subscription = player.addListener('statusChange', startWhenReady);
+    if (player.status === 'readyToPlay') startWhenReady({ status: player.status });
 
     const splashTimer = setTimeout(() => {
       onFinishRef.current();
     }, 15000);
 
-    return () => clearTimeout(splashTimer);
+    return () => {
+      subscription.remove();
+      clearTimeout(splashTimer);
+    };
   }, [player]);
 
   return (
