@@ -36,7 +36,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const endCall = async (reason?: string) => { if (endingRef.current) return; endingRef.current = true; const snapshot = currentRef.current; const wasInCall = callStateRef.current === 'in-call' || !!snapshot?.startedAt; const duration = elapsedRef.current; const callId = snapshot?.callId; try { if (callId) { try { await service.endCallApi(callId, await token(), reason); } catch {} } await finish(reason === 'no_answer' ? 'No answer' : wasInCall ? `Call ended · ${formatTime(duration)}` : 'Call cancelled'); } finally { endingRef.current = false; } };
   endCallRef.current = endCall;
 
-  useEffect(() => { if (Platform.OS !== 'web') return; const unlock = () => { void playRingtone(); try { player.pause(); } catch {} }; window.addEventListener('pointerdown', unlock, { once: true }); return () => window.removeEventListener('pointerdown', unlock); }, [player]);
+  useEffect(() => { if (Platform.OS !== 'web') return; const unlock = () => { try { player.pause(); player.seekTo(0); } catch {} }; window.addEventListener('pointerdown', unlock, { once: true }); return () => window.removeEventListener('pointerdown', unlock); }, [player]);
   useEffect(() => {
     let unsubscribeCall: (() => void) | undefined; let unsubscribeOffset: (() => void) | undefined;
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => { unsubscribeCall?.(); unsubscribeOffset?.(); if (!user) { currentRef.current = null; sessionCall.current = null; sawCall.current = false; stopRingtone(); stopTimer(); void leaveConnection(); return; }
