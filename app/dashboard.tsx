@@ -161,7 +161,13 @@ export default function Dashboard() {
   const { activeTrip, liveOrder, driverStatus, storeCallable, tripStatus, workflowType, markers, activePolyline, showPolyline, arrivalTime } =
   useActiveTrip(driverId, activeOrder);
   const { callState, formattedTime, startCall } = useCall();
-  const { totalEarnings, loading: tripHistoryLoading } = useDriverTripHistory(driverId, 'today');
+  const { totalEarnings, loading: tripHistoryLoading, error: tripHistoryError } = useDriverTripHistory(driverId, 'today');
+
+  useEffect(() => {
+    if (tripHistoryError) {
+      console.warn('[v0] Trip history error:', tripHistoryError);
+    }
+  }, [tripHistoryError]);
 
   const callPulse = useRef(new Animated.Value(1)).current;
 
@@ -230,8 +236,12 @@ export default function Dashboard() {
     if (Platform.OS !== 'web') return;
     const unlock = () => {
       try {
+        void Promise.resolve(messagePlayer.play()).then(() => {
+          messagePlayer.pause();
+          messagePlayer.seekTo(0);
+        }).catch(() => undefined);
+        messagePlayer.pause();
         messagePlayer.seekTo(0);
-        void Promise.resolve(messagePlayer.play()).catch(() => undefined);
       } catch {}
     };
     document.addEventListener('pointerdown', unlock, { once: true });
@@ -1076,7 +1086,7 @@ if (activeTab === 'settings') {
               {tripHistoryLoading || !driverId ? (
                 <View style={styles.statSkeleton} />
               ) : (
-                <Text style={styles.statValue}>ZMW {totalEarnings.toFixed(2)}</Text>
+                <Text style={styles.statValue}>{tripHistoryError ? '--' : `ZMW ${totalEarnings.toFixed(2)}`}</Text>
               )}
             </View>
 

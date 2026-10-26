@@ -18,10 +18,13 @@ function firstString(...values: any[]) {
   return values.find((value) => typeof value === 'string' && value.trim())?.trim() || 'Address unavailable';
 }
 
-function firstNumber(...values: any[]) {
-  const value = values.find((item) => typeof item === 'number' || (typeof item === 'string' && item.trim()));
-  const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
+function firstPositiveFiniteNumber(...values: any[]) {
+  for (const value of values) {
+    if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) continue;
+    const number = Number(value);
+    if (Number.isFinite(number) && number > 0) return number;
+  }
+  return 0;
 }
 
 export function useDriverTripHistory(driverId: string | null, period: Period) {
@@ -47,9 +50,9 @@ export function useDriverTripHistory(driverId: string | null, period: Period) {
         pickup: firstString(data.pickupAddress, data.pickup, data.restaurantName),
         destination: firstString(data.destinationAddress, data.destination, data.dropoffAddress),
         amount: isStoreWorkflow(workflowType)
-          ? firstNumber(data.fee, data.driverEarnings)
-          : firstNumber(data.total, data.fare, data.fee),
-        createdAt: asDate(data.completedAt || data.deliveredAt || data.updatedAt || data.createdAt),
+          ? firstPositiveFiniteNumber(data.driverEarningsAmount, data.fee, data.driverEarnings)
+          : firstPositiveFiniteNumber(data.driverEarningsAmount, data.total, data.fare, data.fee, data.driverEarnings),
+        createdAt: asDate(data.completedAt || data.deliveredAt || data.updatedAt || data.createdAt || data.acceptedAt),
         workflowType: (workflowType === 'direct_trip' || workflowType === 'store_delivery' ? workflowType : 'unknown') as DriverTrip['workflowType'],
       }];
     });

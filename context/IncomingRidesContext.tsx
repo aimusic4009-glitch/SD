@@ -78,8 +78,12 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
     if (Platform.OS !== 'web') return;
     const unlock = () => {
       try {
+        void Promise.resolve(requestPlayer.play()).then(() => {
+          requestPlayer.pause();
+          requestPlayer.seekTo(0);
+        }).catch(() => undefined);
+        requestPlayer.pause();
         requestPlayer.seekTo(0);
-        void Promise.resolve(requestPlayer.play()).catch(() => undefined);
       } catch {}
     };
     document.addEventListener('pointerdown', unlock, { once: true });
